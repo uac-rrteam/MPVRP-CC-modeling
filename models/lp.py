@@ -114,7 +114,9 @@ def solve_lp(
     start_depot = m.addVars(vehicles, trips, depots, vtype=GRB.BINARY, name="start_depot")
     end_depot = m.addVars(vehicles, trips, depots, vtype=GRB.BINARY, name="end_depot")
     visit = m.addVars(vehicles, trips, stations, vtype=GRB.BINARY, name="visit")
+    visit_product = m.addVars(vehicles, trips, stations, products, vtype=GRB.BINARY, name="visit_product")
     quantity = m.addVars(vehicles, trips, stations, products, lb=0.0, vtype=GRB.CONTINUOUS, name="quantity")
+    depot_load = m.addVars(vehicles, trips, depots, products, lb=0.0, vtype=GRB.CONTINUOUS, name="depot_load")
     arc = m.addVars(
         ((k, t, i, j) for k in vehicles for t in trips for i, j in allowed_arcs),
         vtype=GRB.BINARY,
@@ -168,6 +170,22 @@ def solve_lp(
                 else:
                     m.addConstr(visit[k, t, s] == 0, name=f"no_demand_visit[{k},{t},{s}]")
 
+                for p in products:
+                    m.addConstr(visit_product[k, t, s, p] <= visit[k, t, s],
+                                name=f"visit_product_visit[{k},{t},{s},{p}]")
+                    m.addConstr(visit_product[k, t, s, p] <= product[k, t, p],
+                                name=f"visit_product_product[{k},{t},{s},{p}]")
+                    m.addConstr(visit_product[k, t, s, p] >= visit[k, t, s] + product[k, t, p] - 1,
+                                name=f"visit_product_and[{k},{t},{s},{p}]")
+
+    for k in vehicles:
+        for s in stations:
+            for p in products:
+                m.addConstr(
+                    quicksum(visit_product[k, t, s, p] for t in trips) <= 1,
+                    name=f"one_visit_per_vehicle_station_product[{k},{s},{p}]",
+                )
+
     # Quantity, demand satisfaction, and truck capacity.
     for s in stations:
         for p in products:
@@ -195,6 +213,28 @@ def solve_lp(
                 quicksum(quantity[k, t, s, p] for s in stations for p in products)
                 <= instance.vehicules[k].capacity * active[k, t],
                 name=f"capacity[{k},{t}]",
+            )
+
+    # Account for the product volume loaded from each selected start depot.
+    for k in vehicles:
+        max_load = instance.vehicules[k].capacity
+        for t in trips:
+            for p in products:
+                trip_product_load = quicksum(quantity[k, t, s, p] for s in stations)
+                for d in depots:
+                    m.addConstr(depot_load[k, t, d, p] <= max_load * start_depot[k, t, d],
+                                name=f"depot_load_start[{k},{t},{d},{p}]")
+                    m.addConstr(depot_load[k, t, d, p] <= trip_product_load,
+                                name=f"depot_load_trip_ub[{k},{t},{d},{p}]")
+                    m.addConstr(depot_load[k, t, d, p] >= trip_product_load - max_load * (1 - start_depot[k, t, d]),
+                                name=f"depot_load_trip_lb[{k},{t},{d},{p}]")
+
+    for d in depots:
+        for p in products:
+            m.addConstr(
+                quicksum(depot_load[k, t, d, p] for k in vehicles for t in trips)
+                <= instance.depots[d].stocks[p],
+                name=f"stock[{d},{p}]",
             )
 
     # MTZ station ordering removes disconnected station subtours.
@@ -371,12 +411,12 @@ def solve_lp(
 
 
 if __name__ == "__main__":
-    filename = PROJECT_ROOT / "inst" / "medium" / "MPVRP_M_003_s59_d5_p7.dat"
+    filename = PROJECT_ROOT / "inst" / "small" / "MPVRP_S_017_s14_d2_p3.dat"
     instance = MPVRPInstance.read(filename)
     start_time = time.perf_counter()
     sol = solve_lp(
         instance= instance,
-        time_limit=600
+        time_limit=60
     )
     end_time = time.perf_counter()
     if sol:
