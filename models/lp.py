@@ -1,23 +1,12 @@
-#################################
-#
-# Linear programming model of Multi-Product
-# Vehicule Routing Problem with Split-Delivery and Change-Over Costs
-#
-# @Author : Rosas Behoundja
-# May 2026
-#
-#################################
-
 from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from fileinput import filename
 from math import ceil
 
 from gurobipy import GRB, Model, quicksum
 
-from utils.parser import DEFAULT_INSTANCE_PATH, MPVRPInstance, MPVRPNode, write_solution, PROJECT_ROOT
+from utils.parser import MPVRPInstance, MPVRPNode, write_solution, PROJECT_ROOT
 
 TIME_LIMIT = 60
 EPSILON = 1e-6
@@ -65,7 +54,8 @@ def solve_lp(
         time_limit: int = TIME_LIMIT,
         output: bool = True,
 ) -> LPSolution | None:
-    """Solve a bounded-trip MILP for MPVRP-CC.
+    """
+    Solve a bounded-trip MILP for MPVRP-CC.
 
     Each vehicle is allowed up to ``max_trips_per_vehicle`` mini-routes. A
     mini-route starts at one depot, carries exactly one product, visits one or
@@ -411,12 +401,13 @@ def solve_lp(
 
 
 if __name__ == "__main__":
-    filename = PROJECT_ROOT / "inst" / "small" / "MPVRP_S_017_s14_d2_p3.dat"
+    # filename = PROJECT_ROOT / "inst" / "medium" / "MPVRP_M_018_s52_d4_p4.dat"
+    filename = PROJECT_ROOT / "inst" / "one.dat"
     instance = MPVRPInstance.read(filename)
     start_time = time.perf_counter()
     sol = solve_lp(
         instance= instance,
-        time_limit=60
+        time_limit=300
     )
     end_time = time.perf_counter()
     if sol:

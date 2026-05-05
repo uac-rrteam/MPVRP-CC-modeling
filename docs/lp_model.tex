@@ -1,0 +1,417 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage{iftex}
+\ifPDFTeX
+    \IfFileExists{lato.sty}{
+        \usepackage[default]{lato}
+    }{
+        \usepackage{helvet}
+        \renewcommand{\familydefault}{\sfdefault}
+    }
+    \usepackage[T1]{fontenc}
+    \usepackage[utf8]{inputenc}
+\else
+    \usepackage{fontspec}
+    \IfFontExistsTF{Lato}{
+        \setmainfont{Lato}
+        \setsansfont{Lato}
+    }{
+        \setmainfont{TeX Gyre Heros}
+        \setsansfont{TeX Gyre Heros}
+    }
+\fi
+
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage{amsmath,amssymb,mathtools}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{titlesec}
+\usepackage{hyperref}
+
+\definecolor{accent}{HTML}{1F6F8B}
+\definecolor{textgray}{HTML}{333333}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=accent,
+    citecolor=accent,
+    urlcolor=accent
+}
+
+\titleformat{\section}
+    {\Large\bfseries\color{accent}}
+    {\thesection}{0.75em}{}
+\titleformat{\subsection}
+    {\large\bfseries\color{textgray}}
+    {\thesubsection}{0.75em}{}
+
+\setlist[itemize]{leftmargin=1.6em,itemsep=0.2em}
+\setlist[enumerate]{leftmargin=1.6em,itemsep=0.2em}
+
+\title{\textbf{A Bounded-Trip MILP Model for the MPVRP-CC}}
+\author{MPVRP-CC Computational Model}
+\date{May 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+This document states the mixed-integer linear programming model implemented in
+\texttt{models/lp.py} for the Multi-Product Vehicle Routing Problem with Split
+Deliveries and Changeover Costs (MPVRP-CC). Each vehicle may perform a bounded
+number of mini-routes. A mini-route starts at one depot, loads one product,
+visits one or more stations, and ends at one depot. The model minimizes travel
+distance, empty depot transfers, garage access and return distance, and product
+changeover costs. The formulation also enforces depot stock limits and prevents
+the same vehicle from visiting the same station more than once for the same
+product.
+\end{abstract}
+
+\section{Problem Setting}
+
+Let \(R\) be the maximum number of mini-routes allowed for each vehicle. In the
+implementation, this value is the argument
+\texttt{max\_trips\_per\_vehicle}. If it is not provided, the code computes the
+lower bound
+\[
+    R =
+    \left\lceil
+    \frac{\sum_{s \in S}\sum_{p \in P} H_{sp}}
+         {\sum_{k \in K} Q_k}
+    \right\rceil ,
+\]
+where \(H_{sp}\) is the demand of station \(s\) for product \(p\), and \(Q_k\)
+is the capacity of vehicle \(k\).
+
+The model allows split deliveries. Therefore, the demand of a station for a
+product may be served by several vehicles or by several trips, subject to the
+additional rule that one vehicle cannot visit the same station twice for the
+same product.
+
+\section{Sets and Indices}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{ll}
+\toprule
+Symbol & Description \\
+\midrule
+\(K\) & Set of vehicles, indexed by \(k\). \\
+\(T=\{1,\ldots,R\}\) & Ordered set of mini-route positions, indexed by \(t\). \\
+\(P\) & Set of products, indexed by \(p\). \\
+\(D\) & Set of depots, indexed by \(d\). \\
+\(S\) & Set of stations, indexed by \(s\). \\
+\(N=D \cup S\) & Set of nodes used inside a mini-route. \\
+\(A\) & Set of feasible directed arcs \((i,j)\), \(i,j \in N\), \(i\neq j\), excluding depot-to-depot arcs. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Depot-to-depot movements are not internal mini-route arcs. They are represented
+separately between two consecutive mini-routes of the same vehicle.
+
+\section{Parameters}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{ll}
+\toprule
+Symbol & Description \\
+\midrule
+\(Q_k\) & Capacity of vehicle \(k\). \\
+\(H_{sp}\) & Demand of station \(s\) for product \(p\). \\
+\(B_{dp}\) & Stock of product \(p\) available at depot \(d\). \\
+\(g(k)\) & Home garage of vehicle \(k\). \\
+\(p^0_k\) & Initial product configuration of vehicle \(k\). \\
+\(C_{pp'}\) & Changeover cost from product \(p\) to product \(p'\). \\
+\(\Delta_{ij}\) & Distance between nodes \(i\) and \(j\). \\
+\(M=|S|\) & Big-\(M\) value used for station ordering. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Decision Variables}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\toprule
+Variable & Domain & Meaning \\
+\midrule
+\(a_{kt}\) & \(\{0,1\}\) & 1 if vehicle \(k\) uses trip \(t\). \\
+\(y_{ktp}\) & \(\{0,1\}\) & 1 if trip \((k,t)\) carries product \(p\). \\
+\(b_{ktd}\) & \(\{0,1\}\) & 1 if trip \((k,t)\) starts at depot \(d\). \\
+\(e_{ktd}\) & \(\{0,1\}\) & 1 if trip \((k,t)\) ends at depot \(d\). \\
+\(v_{kts}\) & \(\{0,1\}\) & 1 if trip \((k,t)\) visits station \(s\). \\
+\(w_{ktsp}\) & \(\{0,1\}\) & 1 if trip \((k,t)\) visits station \(s\) while carrying product \(p\). \\
+\(x_{ktij}\) & \(\{0,1\}\) & 1 if arc \((i,j)\in A\) is used in trip \((k,t)\). \\
+\(q_{ktsp}\) & \(\mathbb{R}_+\) & Quantity of product \(p\) delivered to station \(s\). \\
+\(L_{ktdp}\) & \(\mathbb{R}_+\) & Quantity of product \(p\) loaded from depot \(d\). \\
+\(u_{kts}\) & \([0,M]\) & Order of station \(s\) in trip \((k,t)\). \\
+\(m_{kt}\) & \(\{0,1\}\) & 1 if trip \(t\) is the last active trip of vehicle \(k\). \\
+\(r_{ktd}\) & \(\{0,1\}\) & 1 if vehicle \(k\) returns from depot \(d\) after trip \(t\). \\
+\(z_{ktpp'}\) & \(\{0,1\}\) & 1 if vehicle \(k\) changes from product \(p\) to \(p'\) after trip \(t\). \\
+\(f_{ktdd'}\) & \(\{0,1\}\) & 1 if vehicle \(k\) transfers from depot \(d\) to depot \(d'\) between trips. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Objective Function}
+
+The objective minimizes the total operating cost:
+\begin{align}
+\min \quad
+& \sum_{k \in K}\sum_{t \in T}\sum_{(i,j)\in A}
+    \Delta_{ij} x_{ktij}
+    && \text{mini-route travel} \nonumber\\
+& + \sum_{k \in K}\sum_{d \in D}
+    \Delta_{g(k)d} b_{k1d}
+    && \text{travel from garage to first depot} \nonumber\\
+& + \sum_{k \in K}\sum_{t \in T}\sum_{d \in D}
+    \Delta_{dg(k)} r_{ktd}
+    && \text{return from last depot to garage} \nonumber\\
+& + \sum_{k \in K}\sum_{t=1}^{R-1}\sum_{d \in D}\sum_{d' \in D}
+    \Delta_{dd'} f_{ktdd'}
+    && \text{empty transfer between depots} \nonumber\\
+& + \sum_{k \in K}\sum_{p \in P}
+    C_{p^0_k p} y_{k1p}
+    && \text{initial product setup} \nonumber\\
+& + \sum_{k \in K}\sum_{t=1}^{R-1}\sum_{p \in P}\sum_{p' \in P}
+    C_{pp'} z_{ktpp'}
+    && \text{inter-trip changeover}.
+\label{eq:objective}
+\end{align}
+
+\section{Constraints}
+
+\subsection{Trip Activation and Sequencing}
+
+Each active trip selects exactly one product, one start depot, and one end
+depot:
+\begin{align}
+    \sum_{p \in P} y_{ktp} &= a_{kt}
+        && \forall k \in K,\ t \in T, \label{eq:one-product}\\
+    \sum_{d \in D} b_{ktd} &= a_{kt}
+        && \forall k \in K,\ t \in T, \label{eq:one-start}\\
+    \sum_{d \in D} e_{ktd} &= a_{kt}
+        && \forall k \in K,\ t \in T. \label{eq:one-end}
+\end{align}
+
+Trips are used in order:
+\begin{equation}
+    a_{kt} \leq a_{k,t-1}
+    \qquad \forall k \in K,\ t=2,\ldots,R.
+\label{eq:ordered-trips}
+\end{equation}
+
+\subsection{Mini-Route Flow}
+
+If trip \((k,t)\) starts at depot \(d\), exactly one arc leaves that depot
+toward a station:
+\begin{equation}
+    \sum_{j \in S} x_{ktdj} = b_{ktd}
+    \qquad \forall k \in K,\ t \in T,\ d \in D.
+\label{eq:start-flow}
+\end{equation}
+
+If trip \((k,t)\) ends at depot \(d\), exactly one station-to-depot arc enters
+that depot:
+\begin{equation}
+    \sum_{i \in S} x_{ktid} = e_{ktd}
+    \qquad \forall k \in K,\ t \in T,\ d \in D.
+\label{eq:end-flow}
+\end{equation}
+
+For each station, incoming and outgoing flow are both equal to the visit
+decision:
+\begin{align}
+    \sum_{\substack{i \in N\\i\neq s}} x_{ktis} &= v_{kts}
+        && \forall k \in K,\ t \in T,\ s \in S, \label{eq:station-in}\\
+    \sum_{\substack{j \in N\\j\neq s}} x_{ktsj} &= v_{kts}
+        && \forall k \in K,\ t \in T,\ s \in S. \label{eq:station-out}
+\end{align}
+
+Let \(P_s=\{p\in P:H_{sp}>0\}\) be the set of products demanded by station
+\(s\). A station can be visited only by a trip carrying a demanded product:
+\begin{equation}
+    v_{kts} \leq \sum_{p \in P_s} y_{ktp}
+    \qquad \forall k \in K,\ t \in T,\ s \in S: P_s \neq \emptyset.
+\label{eq:visit-product}
+\end{equation}
+If \(P_s=\emptyset\), then
+\begin{equation}
+    v_{kts}=0
+    \qquad \forall k \in K,\ t \in T.
+\label{eq:no-demand-visit}
+\end{equation}
+
+\subsection{Station-Product Visit Logic}
+
+The variable \(w_{ktsp}\) is the logical AND of the station visit variable
+\(v_{kts}\) and the selected product variable \(y_{ktp}\):
+\begin{align}
+    w_{ktsp} &\leq v_{kts}
+        && \forall k \in K,\ t \in T,\ s \in S,\ p \in P, \label{eq:w-visit}\\
+    w_{ktsp} &\leq y_{ktp}
+        && \forall k \in K,\ t \in T,\ s \in S,\ p \in P, \label{eq:w-product}\\
+    w_{ktsp} &\geq v_{kts} + y_{ktp} - 1
+        && \forall k \in K,\ t \in T,\ s \in S,\ p \in P. \label{eq:w-and}
+\end{align}
+
+The same vehicle cannot visit the same station more than once for the same
+product:
+\begin{equation}
+    \sum_{t \in T} w_{ktsp} \leq 1
+    \qquad \forall k \in K,\ s \in S,\ p \in P.
+\label{eq:one-visit-station-product}
+\end{equation}
+
+\subsection{Demand Satisfaction and Capacity}
+
+All positive station-product demands must be satisfied:
+\begin{equation}
+    \sum_{k \in K}\sum_{t \in T} q_{ktsp} = H_{sp}
+    \qquad \forall s \in S,\ p \in P: H_{sp}>0.
+\label{eq:demand}
+\end{equation}
+
+No quantity is delivered for a zero-demand station-product pair:
+\begin{equation}
+    q_{ktsp}=0
+    \qquad \forall k \in K,\ t \in T,\ s \in S,\ p \in P: H_{sp}=0.
+\label{eq:zero-demand}
+\end{equation}
+
+Delivery quantities are linked to the selected product and station visit:
+\begin{align}
+    q_{ktsp} &\leq H_{sp} y_{ktp}
+        && \forall k \in K,\ t \in T,\ s \in S,\ p \in P, \label{eq:quantity-product}\\
+    q_{ktsp} &\leq H_{sp} v_{kts}
+        && \forall k \in K,\ t \in T,\ s \in S,\ p \in P. \label{eq:quantity-visit}
+\end{align}
+
+Vehicle capacity is enforced for each trip:
+\begin{equation}
+    \sum_{s \in S}\sum_{p \in P} q_{ktsp}
+    \leq Q_k a_{kt}
+    \qquad \forall k \in K,\ t \in T.
+\label{eq:capacity}
+\end{equation}
+
+\subsection{Depot Stock Accounting}
+
+The model uses \(L_{ktdp}\) to assign the load of each trip to the selected
+start depot. For each vehicle \(k\), let the trip load of product \(p\) be
+\[
+    Q^{\mathrm{trip}}_{ktp} = \sum_{s \in S} q_{ktsp}.
+\]
+The following linear constraints enforce
+\(L_{ktdp}=Q^{\mathrm{trip}}_{ktp}\) if trip \((k,t)\) starts at depot \(d\),
+and \(L_{ktdp}=0\) otherwise:
+\begin{align}
+    L_{ktdp} &\leq Q_k b_{ktd}
+        && \forall k \in K,\ t \in T,\ d \in D,\ p \in P, \label{eq:load-start}\\
+    L_{ktdp} &\leq \sum_{s \in S} q_{ktsp}
+        && \forall k \in K,\ t \in T,\ d \in D,\ p \in P, \label{eq:load-upper}\\
+    L_{ktdp} &\geq \sum_{s \in S} q_{ktsp} - Q_k(1-b_{ktd})
+        && \forall k \in K,\ t \in T,\ d \in D,\ p \in P. \label{eq:load-lower}
+\end{align}
+
+The total quantity loaded from each depot cannot exceed the available stock:
+\begin{equation}
+    \sum_{k \in K}\sum_{t \in T} L_{ktdp}
+    \leq B_{dp}
+    \qquad \forall d \in D,\ p \in P.
+\label{eq:stock}
+\end{equation}
+
+\subsection{Subtour Elimination}
+
+The implementation uses Miller--Tucker--Zemlin station order variables:
+\begin{align}
+    u_{kts} &\leq M v_{kts}
+        && \forall k \in K,\ t \in T,\ s \in S, \label{eq:order-upper}\\
+    u_{kts} &\geq v_{kts}
+        && \forall k \in K,\ t \in T,\ s \in S. \label{eq:order-lower}
+\end{align}
+
+For station-to-station arcs, subtours are removed by:
+\begin{equation}
+    u_{kti} - u_{ktj} + M x_{ktij} \leq M - 1
+    \qquad
+    \forall k \in K,\ t \in T,\ i,j \in S,\ i\neq j.
+\label{eq:mtz}
+\end{equation}
+
+\subsection{Changeover and Depot Transfer Logic}
+
+For consecutive trips, \(z_{ktpp'}\) is the logical AND of \(y_{ktp}\) and
+\(y_{k,t+1,p'}\):
+\begin{align}
+    z_{ktpp'} &\leq y_{ktp}
+        && \forall k \in K,\ t=1,\ldots,R-1,\ p,p' \in P, \label{eq:change-prev}\\
+    z_{ktpp'} &\leq y_{k,t+1,p'}
+        && \forall k \in K,\ t=1,\ldots,R-1,\ p,p' \in P, \label{eq:change-next}\\
+    z_{ktpp'} &\geq y_{ktp}+y_{k,t+1,p'}-1
+        && \forall k \in K,\ t=1,\ldots,R-1,\ p,p' \in P. \label{eq:change-and}
+\end{align}
+
+Similarly, \(f_{ktdd'}\) is the logical AND of ending trip \(t\) at depot \(d\)
+and starting trip \(t+1\) at depot \(d'\):
+\begin{align}
+    f_{ktdd'} &\leq e_{ktd}
+        && \forall k \in K,\ t=1,\ldots,R-1,\ d,d' \in D, \label{eq:transfer-end}\\
+    f_{ktdd'} &\leq b_{k,t+1,d'}
+        && \forall k \in K,\ t=1,\ldots,R-1,\ d,d' \in D, \label{eq:transfer-start}\\
+    f_{ktdd'} &\geq e_{ktd}+b_{k,t+1,d'}-1
+        && \forall k \in K,\ t=1,\ldots,R-1,\ d,d' \in D. \label{eq:transfer-and}
+\end{align}
+
+\subsection{Last Active Trip and Garage Return}
+
+The last active trip of each vehicle is identified by:
+\begin{align}
+    m_{kt} &= a_{kt}-a_{k,t+1}
+        && \forall k \in K,\ t=1,\ldots,R-1, \label{eq:last-trip-middle}\\
+    m_{kR} &= a_{kR}
+        && \forall k \in K. \label{eq:last-trip-final}
+\end{align}
+
+The variable \(r_{ktd}\) is the logical AND of ending trip \((k,t)\) at depot
+\(d\) and trip \(t\) being the last active trip:
+\begin{align}
+    r_{ktd} &\leq e_{ktd}
+        && \forall k \in K,\ t \in T,\ d \in D, \label{eq:return-end}\\
+    r_{ktd} &\leq m_{kt}
+        && \forall k \in K,\ t \in T,\ d \in D, \label{eq:return-last}\\
+    r_{ktd} &\geq e_{ktd}+m_{kt}-1
+        && \forall k \in K,\ t \in T,\ d \in D. \label{eq:return-and}
+\end{align}
+
+\section{Domains}
+
+\begin{align}
+    a_{kt}, y_{ktp}, b_{ktd}, e_{ktd}, v_{kts}, w_{ktsp}, x_{ktij},
+    m_{kt}, r_{ktd}, z_{ktpp'}, f_{ktdd'} &\in \{0,1\}, \\
+    q_{ktsp}, L_{ktdp} &\geq 0, \\
+    0 \leq u_{kts} &\leq M.
+\end{align}
+
+\section{Implementation Notes}
+
+The notation above follows the implemented model in \texttt{models/lp.py}. The
+Python code uses zero-based product indices internally, while product
+identifiers in instance files may be one-based. The allowed route arcs contain
+depot-to-station, station-to-station, and station-to-depot arcs, but not
+depot-to-depot arcs. Empty depot-to-depot movements are priced only between
+consecutive trips.
+
+The formulation is exact for the selected trip bound \(R\). Increasing \(R\)
+expands the feasible region, but it also increases the number of binary
+variables and constraints. In computational experiments, \(R\) should therefore
+be chosen as a compromise between operational flexibility and tractability.
+
+\end{document}
