@@ -10,12 +10,14 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
+from fileinput import filename
 from math import ceil
 
 from gurobipy import GRB, Model, quicksum
 
-from utils.parser import DEFAULT_INSTANCE_PATH, MPVRPInstance, MPVRPNode
+from utils.parser import DEFAULT_INSTANCE_PATH, MPVRPInstance, MPVRPNode, write_solution, PROJECT_ROOT
 
 TIME_LIMIT = 60
 EPSILON = 1e-6
@@ -369,8 +371,17 @@ def solve_lp(
 
 
 if __name__ == "__main__":
-    instance = MPVRPInstance.read(DEFAULT_INSTANCE_PATH)
-    solve_lp(
+    filename = PROJECT_ROOT / "inst" / "medium" / "MPVRP_M_003_s59_d5_p7.dat"
+    instance = MPVRPInstance.read(filename)
+    start_time = time.perf_counter()
+    sol = solve_lp(
         instance= instance,
-        time_limit=TIME_LIMIT
+        time_limit=600
     )
+    end_time = time.perf_counter()
+    if sol:
+        write_solution(
+            instance=instance,
+            routes=sol.routes,
+            resolution_time=end_time - start_time
+        )
