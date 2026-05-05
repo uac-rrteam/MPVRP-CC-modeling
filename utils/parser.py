@@ -4,7 +4,8 @@ from pathlib import Path
 from typing import List, Optional
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_INSTANCE_PATH = PROJECT_ROOT / "inst" / "large" / "MPVRP_L_012_s176_d7_p11.dat"
+# DEFAULT_INSTANCE_PATH = PROJECT_ROOT / "inst" / "large" / "MPVRP_L_012_s176_d7_p11.dat"
+DEFAULT_INSTANCE_PATH = PROJECT_ROOT / "inst" / "one.dat"
 
 
 @dataclass(frozen=True)

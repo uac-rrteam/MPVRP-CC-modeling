@@ -8,51 +8,369 @@
 #
 #################################
 
-from gurobipy import GRB, quicksum, Model
+from __future__ import annotations
 
-from utils.parser import DEFAULT_INSTANCE_PATH, MPVRPInstance
+from dataclasses import dataclass
+from math import ceil
 
-TIME_LIMIT = 600  # 1 minute
+from gurobipy import GRB, Model, quicksum
+
+from utils.parser import DEFAULT_INSTANCE_PATH, MPVRPInstance, MPVRPNode
+
+TIME_LIMIT = 60
+EPSILON = 1e-6
 
 
-def solve_lp(instance: MPVRPInstance):
-    model = instance.uuid + "_lp"
-    m = Model(model)
-    m.setParam('OutputFlag', 0)
-    m.setParam('TimeLimit', TIME_LIMIT)
+@dataclass(frozen=True)
+class LPSolution:
+    objective: float
+    status: int
+    routes: list[dict]
 
-    # Create variables
-    x = m.addVars(instance.n_vehicules, instance.n_stations, vtype=GRB.BINARY, name="x")
-    q = m.addVars(instance.n_vehicules, instance.n_stations, instance.n_prods, vtype=GRB.CONTINUOUS, name="q")
 
-    # Objective function
-    m.setObjective(quicksum(instance.changeover_cost[p][p2] * x[v, s] for v in range(instance.n_vehicules) for s in
-                            range(instance.n_stations) for p in range(instance.n_prods) for p2 in
-                            range(instance.n_prods)), GRB.MINIMIZE)
+def _distance(a: MPVRPNode, b: MPVRPNode) -> float:
+    return a.distance(b)
 
-    # Constraints
-    for s in range(instance.n_stations):
-        m.addConstr(quicksum(x[v, s] for v in range(instance.n_vehicules)) == 1)
 
-    for v in range(instance.n_vehicules):
-        for p in range(instance.n_prods):
-            m.addConstr(quicksum(q[v, s, p] for s in range(instance.n_stations)) <= instance.vehicules[v].capacity)
+def _minimum_uniform_trip_bound(instance: MPVRPInstance) -> int:
+    total_demand = sum(sum(station.demand) for station in instance.stations)
+    fleet_capacity = sum(vehicle.capacity for vehicle in instance.vehicules)
+    if total_demand <= EPSILON:
+        return 0
+    if fleet_capacity <= EPSILON:
+        raise ValueError("The fleet has no usable capacity.")
+    return ceil(total_demand / fleet_capacity)
 
-    for v in range(instance.n_vehicules):
-        for s in range(instance.n_stations):
-            for p in range(instance.n_prods):
-                m.addConstr(q[v, s, p] <= instance.stations[s].demand[p] * x[v, s])
+
+def _validate_trip_bound(instance: MPVRPInstance, max_trips_per_vehicle: int) -> None:
+    if max_trips_per_vehicle < 1:
+        raise ValueError("max_trips_per_vehicle must be at least 1.")
+
+    total_demand = sum(sum(station.demand) for station in instance.stations)
+    total_capacity = max_trips_per_vehicle * sum(vehicle.capacity for vehicle in instance.vehicules)
+    if total_capacity + EPSILON < total_demand:
+        minimum = _minimum_uniform_trip_bound(instance)
+        raise ValueError(
+            "max_trips_per_vehicle is too small to satisfy total demand: "
+            f"capacity={total_capacity:.1f}, demand={total_demand:.1f}. "
+            f"Use at least {minimum} trips per vehicle."
+        )
+
+
+def solve_lp(
+        instance: MPVRPInstance,
+        max_trips_per_vehicle: int | None = None,
+        time_limit: int = TIME_LIMIT,
+        output: bool = True,
+) -> LPSolution | None:
+    """Solve a bounded-trip MILP for MPVRP-CC.
+
+    Each vehicle is allowed up to ``max_trips_per_vehicle`` mini-routes. A
+    mini-route starts at one depot, carries exactly one product, visits one or
+    more stations, and returns to a depot. Vehicles start and end at their home
+    garage, and consecutive mini-routes pay product changeover costs.
+    """
+    if max_trips_per_vehicle is None:
+        max_trips_per_vehicle = _minimum_uniform_trip_bound(instance)
+
+    _validate_trip_bound(instance, max_trips_per_vehicle)
+
+    vehicles = range(instance.n_vehicules)
+    trips = range(max_trips_per_vehicle)
+    products = range(instance.n_prods)
+    depots = range(instance.n_depots)
+    stations = range(instance.n_stations)
+
+    n_depot_nodes = instance.n_depots
+    n_station_nodes = instance.n_stations
+    station_offset = n_depot_nodes
+    route_nodes = range(n_depot_nodes + n_station_nodes)
+    station_nodes = range(station_offset, station_offset + n_station_nodes)
+
+    def station_node(station_idx: int) -> int:
+        return station_offset + station_idx
+
+    def route_node(node_idx: int) -> MPVRPNode:
+        if node_idx < n_depot_nodes:
+            return instance.depots[node_idx]
+        return instance.stations[node_idx - station_offset]
+
+    allowed_arcs = [
+        (i, j)
+        for i in route_nodes
+        for j in route_nodes
+        if i != j and (i >= station_offset or j >= station_offset)
+    ]
+
+    model_name = f"{instance.uuid}_bounded_trip_mip"
+    m = Model(model_name)
+    m.setParam("OutputFlag", 1 if output else 0)
+    m.setParam("TimeLimit", time_limit)
+
+    active = m.addVars(vehicles, trips, vtype=GRB.BINARY, name="active")
+    product = m.addVars(vehicles, trips, products, vtype=GRB.BINARY, name="product")
+    start_depot = m.addVars(vehicles, trips, depots, vtype=GRB.BINARY, name="start_depot")
+    end_depot = m.addVars(vehicles, trips, depots, vtype=GRB.BINARY, name="end_depot")
+    visit = m.addVars(vehicles, trips, stations, vtype=GRB.BINARY, name="visit")
+    quantity = m.addVars(vehicles, trips, stations, products, lb=0.0, vtype=GRB.CONTINUOUS, name="quantity")
+    arc = m.addVars(
+        ((k, t, i, j) for k in vehicles for t in trips for i, j in allowed_arcs),
+        vtype=GRB.BINARY,
+        name="arc",
+    )
+    order = m.addVars(vehicles, trips, stations, lb=0.0, ub=n_station_nodes, vtype=GRB.CONTINUOUS, name="order")
+
+    last_trip = m.addVars(vehicles, trips, vtype=GRB.BINARY, name="last_trip")
+    return_depot = m.addVars(vehicles, trips, depots, vtype=GRB.BINARY, name="return_depot")
+
+    if max_trips_per_vehicle > 1:
+        change = m.addVars(vehicles, range(max_trips_per_vehicle - 1), products, products, vtype=GRB.BINARY,
+                           name="change")
+        depot_transfer = m.addVars(vehicles, range(max_trips_per_vehicle - 1), depots, depots, vtype=GRB.BINARY,
+                                   name="depot_transfer")
+    else:
+        change = {}
+        depot_transfer = {}
+
+    # Trip activation and sequencing.
+    for k in vehicles:
+        for t in trips:
+            m.addConstr(quicksum(product[k, t, p] for p in products) == active[k, t], name=f"one_product[{k},{t}]")
+            m.addConstr(quicksum(start_depot[k, t, d] for d in depots) == active[k, t],
+                        name=f"one_start_depot[{k},{t}]")
+            m.addConstr(quicksum(end_depot[k, t, d] for d in depots) == active[k, t],
+                        name=f"one_end_depot[{k},{t}]")
+            if t > 0:
+                m.addConstr(active[k, t] <= active[k, t - 1], name=f"ordered_trips[{k},{t}]")
+
+    # Route flow for each mini-route.
+    for k in vehicles:
+        for t in trips:
+            for d in depots:
+                m.addConstr(quicksum(arc[k, t, d, j] for j in station_nodes) == start_depot[k, t, d],
+                            name=f"leave_start_depot[{k},{t},{d}]")
+                m.addConstr(quicksum(arc[k, t, i, d] for i in station_nodes) == end_depot[k, t, d],
+                            name=f"enter_end_depot[{k},{t},{d}]")
+
+            for s in stations:
+                node = station_node(s)
+                m.addConstr(quicksum(arc[k, t, i, node] for i in route_nodes if i != node) == visit[k, t, s],
+                            name=f"station_in[{k},{t},{s}]")
+                m.addConstr(quicksum(arc[k, t, node, j] for j in route_nodes if j != node) == visit[k, t, s],
+                            name=f"station_out[{k},{t},{s}]")
+
+                demanded_products = [p for p in products if instance.stations[s].demand[p] > EPSILON]
+                if demanded_products:
+                    m.addConstr(visit[k, t, s] <= quicksum(product[k, t, p] for p in demanded_products),
+                                name=f"visit_product_match[{k},{t},{s}]")
+                else:
+                    m.addConstr(visit[k, t, s] == 0, name=f"no_demand_visit[{k},{t},{s}]")
+
+    # Quantity, demand satisfaction, and truck capacity.
+    for s in stations:
+        for p in products:
+            demand = instance.stations[s].demand[p]
+            if demand <= EPSILON:
+                for k in vehicles:
+                    for t in trips:
+                        m.addConstr(quantity[k, t, s, p] == 0.0, name=f"zero_quantity[{k},{t},{s},{p}]")
+                continue
+
+            m.addConstr(
+                quicksum(quantity[k, t, s, p] for k in vehicles for t in trips) == demand,
+                name=f"demand[{s},{p}]",
+            )
+            for k in vehicles:
+                for t in trips:
+                    m.addConstr(quantity[k, t, s, p] <= demand * product[k, t, p],
+                                name=f"quantity_product[{k},{t},{s},{p}]")
+                    m.addConstr(quantity[k, t, s, p] <= demand * visit[k, t, s],
+                                name=f"quantity_visit[{k},{t},{s},{p}]")
+
+    for k in vehicles:
+        for t in trips:
+            m.addConstr(
+                quicksum(quantity[k, t, s, p] for s in stations for p in products)
+                <= instance.vehicules[k].capacity * active[k, t],
+                name=f"capacity[{k},{t}]",
+            )
+
+    # MTZ station ordering removes disconnected station subtours.
+    for k in vehicles:
+        for t in trips:
+            for s in stations:
+                m.addConstr(order[k, t, s] <= n_station_nodes * visit[k, t, s], name=f"order_ub[{k},{t},{s}]")
+                m.addConstr(order[k, t, s] >= visit[k, t, s], name=f"order_lb[{k},{t},{s}]")
+            for i in stations:
+                for j in stations:
+                    if i == j:
+                        continue
+                    m.addConstr(
+                        order[k, t, i] - order[k, t, j]
+                        + n_station_nodes * arc[k, t, station_node(i), station_node(j)]
+                        <= n_station_nodes - 1,
+                        name=f"mtz[{k},{t},{i},{j}]",
+                    )
+
+    # Consecutive trip changeovers and depot-to-depot empty transfers.
+    for k in vehicles:
+        for t in range(max_trips_per_vehicle - 1):
+            for p in products:
+                for p2 in products:
+                    m.addConstr(change[k, t, p, p2] <= product[k, t, p], name=f"change_prev[{k},{t},{p},{p2}]")
+                    m.addConstr(change[k, t, p, p2] <= product[k, t + 1, p2],
+                                name=f"change_next[{k},{t},{p},{p2}]")
+                    m.addConstr(change[k, t, p, p2] >= product[k, t, p] + product[k, t + 1, p2] - 1,
+                                name=f"change_and[{k},{t},{p},{p2}]")
+
+            for d in depots:
+                for d2 in depots:
+                    m.addConstr(depot_transfer[k, t, d, d2] <= end_depot[k, t, d],
+                                name=f"transfer_end[{k},{t},{d},{d2}]")
+                    m.addConstr(depot_transfer[k, t, d, d2] <= start_depot[k, t + 1, d2],
+                                name=f"transfer_start[{k},{t},{d},{d2}]")
+                    m.addConstr(
+                        depot_transfer[k, t, d, d2] >= end_depot[k, t, d] + start_depot[k, t + 1, d2] - 1,
+                        name=f"transfer_and[{k},{t},{d},{d2}]",
+                    )
+
+    # Identify each vehicle's last active trip to price the return to its garage.
+    for k in vehicles:
+        for t in trips:
+            if t < max_trips_per_vehicle - 1:
+                m.addConstr(last_trip[k, t] == active[k, t] - active[k, t + 1], name=f"last_trip[{k},{t}]")
+            else:
+                m.addConstr(last_trip[k, t] == active[k, t], name=f"last_trip[{k},{t}]")
+
+            for d in depots:
+                m.addConstr(return_depot[k, t, d] <= end_depot[k, t, d], name=f"return_end[{k},{t},{d}]")
+                m.addConstr(return_depot[k, t, d] <= last_trip[k, t], name=f"return_last[{k},{t},{d}]")
+                m.addConstr(return_depot[k, t, d] >= end_depot[k, t, d] + last_trip[k, t] - 1,
+                            name=f"return_and[{k},{t},{d}]")
+
+    travel_cost = quicksum(
+        _distance(route_node(i), route_node(j)) * arc[k, t, i, j]
+        for k in vehicles
+        for t in trips
+        for i, j in allowed_arcs
+    )
+
+    garage_start_cost = quicksum(
+        _distance(instance.vehicules[k].start_g, instance.depots[d]) * start_depot[k, 0, d]
+        for k in vehicles
+        for d in depots
+    )
+
+    garage_return_cost = quicksum(
+        _distance(instance.depots[d], instance.vehicules[k].start_g) * return_depot[k, t, d]
+        for k in vehicles
+        for t in trips
+        for d in depots
+    )
+
+    transfer_cost = quicksum(
+        _distance(instance.depots[d], instance.depots[d2]) * depot_transfer[k, t, d, d2]
+        for k in vehicles
+        for t in range(max_trips_per_vehicle - 1)
+        for d in depots
+        for d2 in depots
+    )
+
+    initial_changeover_cost = quicksum(
+        instance.changeover_cost[instance.vehicules[k].init_prod - 1][p] * product[k, 0, p]
+        for k in vehicles
+        for p in products
+    )
+
+    trip_changeover_cost = quicksum(
+        instance.changeover_cost[p][p2] * change[k, t, p, p2]
+        for k in vehicles
+        for t in range(max_trips_per_vehicle - 1)
+        for p in products
+        for p2 in products
+    )
+
+    m.setObjective(
+        travel_cost
+        + garage_start_cost
+        + garage_return_cost
+        + transfer_cost
+        + initial_changeover_cost
+        + trip_changeover_cost,
+        GRB.MINIMIZE,
+    )
 
     m.optimize()
 
-    if m.status == GRB.OPTIMAL:
-        print(f"Optimal solution found with objective value: {m.objVal}")
-        return m.objVal
-    else:
-        print("No optimal solution found.")
+    if m.status not in (GRB.OPTIMAL, GRB.TIME_LIMIT):
+        print(f"No feasible solution found. Gurobi status: {m.status}")
         return None
+
+    if m.solCount == 0:
+        print(f"No incumbent solution found. Gurobi status: {m.status}")
+        return None
+
+    routes = []
+
+    def node_label(node_idx: int) -> str:
+        if node_idx < n_depot_nodes:
+            return f"D{instance.depots[node_idx].id}"
+        return f"S{instance.stations[node_idx - station_offset].id}"
+
+    def selected_route_nodes(k: int, t: int, start: int) -> list[str]:
+        sequence = [node_label(start)]
+        current = start
+        used = set()
+        while True:
+            next_nodes = [
+                j for i, j in allowed_arcs
+                if i == current and arc[k, t, i, j].X > 0.5 and (i, j) not in used
+            ]
+            if not next_nodes:
+                break
+            next_node = next_nodes[0]
+            used.add((current, next_node))
+            sequence.append(node_label(next_node))
+            if next_node < n_depot_nodes:
+                break
+            current = next_node
+        return sequence
+
+    for k in vehicles:
+        for t in trips:
+            if active[k, t].X <= 0.5:
+                continue
+            selected_product = next(p for p in products if product[k, t, p].X > 0.5)
+            selected_start = next(d for d in depots if start_depot[k, t, d].X > 0.5)
+            selected_end = next(d for d in depots if end_depot[k, t, d].X > 0.5)
+            delivered = [
+                {
+                    "station": instance.stations[s].id,
+                    "product": selected_product + 1,
+                    "quantity": quantity[k, t, s, selected_product].X,
+                }
+                for s in stations
+                if quantity[k, t, s, selected_product].X > EPSILON
+            ]
+            routes.append(
+                {
+                    "vehicle": instance.vehicules[k].id,
+                    "trip": t + 1,
+                    "product": selected_product + 1,
+                    "start_depot": instance.depots[selected_start].id,
+                    "end_depot": instance.depots[selected_end].id,
+                    "path": selected_route_nodes(k, t, selected_start),
+                    "deliveries": delivered,
+                }
+            )
+
+    print(f"Solution found with objective value: {m.objVal}")
+    return LPSolution(objective=m.objVal, status=m.status, routes=routes)
 
 
 if __name__ == "__main__":
     instance = MPVRPInstance.read(DEFAULT_INSTANCE_PATH)
-    solve_lp(instance)
+    solve_lp(
+        instance= instance,
+        time_limit=TIME_LIMIT
+    )
