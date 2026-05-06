@@ -1,0 +1,98 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from pathlib import Path
+
+import numpy as np
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "inst" / "generated"
+EPSILON = 1e-6
+
+
+@dataclass(frozen=True)
+class GenerationConfig:
+    instance_code: str
+    vehicles: int
+    depots: int
+    garages: int
+    stations: int
+    products: int
+    output_dir: Path = DEFAULT_OUTPUT_DIR
+    grid_size: float = 100.0
+    min_capacity: int = 4_000
+    max_capacity: int = 10_000
+    min_transition_cost: float = 10.0
+    max_transition_cost: float = 80.0
+    min_demand: int = 500
+    max_demand: int = 5_000
+    demand_probability: float = 0.45
+    stock_surplus_ratio: float = 0.20
+    min_point_distance: float = 0.1
+    coordinate_strategy: str = "clustered"
+    seed: int | None = None
+    force: bool = False
+
+    @property
+    def filename(self) -> str:
+        return f"MPVRP_{self.instance_code}_s{self.stations}_d{self.depots}_p{self.products}.dat"
+
+    @property
+    def filepath(self) -> Path:
+        return self.output_dir / self.filename
+
+
+@dataclass(frozen=True)
+class InstanceData:
+    uuid: str
+    params: np.ndarray
+    transition_costs: np.ndarray
+    vehicles: np.ndarray
+    depots: np.ndarray
+    garages: np.ndarray
+    stations: np.ndarray
+
+    @property
+    def nb_products(self) -> int:
+        return int(self.params[0])
+
+    @property
+    def nb_depots(self) -> int:
+        return int(self.params[1])
+
+    @property
+    def nb_garages(self) -> int:
+        return int(self.params[2])
+
+    @property
+    def nb_stations(self) -> int:
+        return int(self.params[3])
+
+    @property
+    def nb_vehicles(self) -> int:
+        return int(self.params[4])
+
+
+@dataclass(frozen=True)
+class ParsedInstance(InstanceData):
+    filepath: Path
+
+
+@dataclass
+class VerificationReport:
+    errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    infos: list[str] = field(default_factory=list)
+
+    @property
+    def is_valid(self) -> bool:
+        return not self.errors
+
+    def error(self, message: str) -> None:
+        self.errors.append(message)
+
+    def warning(self, message: str) -> None:
+        self.warnings.append(message)
+
+    def info(self, message: str) -> None:
+        self.infos.append(message)

@@ -402,7 +402,7 @@ def solve_lp(
 
 if __name__ == "__main__":
     # filename = PROJECT_ROOT / "inst" / "medium" / "MPVRP_M_018_s52_d4_p4.dat"
-    filename = PROJECT_ROOT / "inst" / "one.dat"
+    filename = PROJECT_ROOT / "inst" / "generated" / "MPVRP_S_001_s10_d1_p1.dat"
     instance = MPVRPInstance.read(filename)
     start_time = time.perf_counter()
     sol = solve_lp(
