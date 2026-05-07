@@ -14,6 +14,7 @@ from utils.parser import MPVRPInstance
 
 
 def validate_generation_config(config: GenerationConfig) -> VerificationReport:
+    """Validate generator options before any random instance data is created."""
     report = VerificationReport()
     for name, value in {
         "vehicles": config.vehicles,
@@ -27,35 +28,25 @@ def validate_generation_config(config: GenerationConfig) -> VerificationReport:
 
     if config.grid_size <= 0:
         report.error("grid_size must be positive.")
-    if config.min_capacity <= 0 or config.max_capacity <= 0:
-        report.error("Vehicle capacities must be positive.")
-    if config.min_capacity > config.max_capacity:
-        report.error("min_capacity cannot exceed max_capacity.")
-    if config.min_demand <= 0 or config.max_demand <= 0:
-        report.error("Demands must be positive.")
-    if config.min_demand > config.max_demand:
-        report.error("min_demand cannot exceed max_demand.")
     if not 0 < config.demand_probability <= 1:
         report.error("demand_probability must be in (0, 1].")
-    if config.min_transition_cost < 0 or config.max_transition_cost < 0:
-        report.error("Transition costs must be non-negative.")
-    if config.min_transition_cost > config.max_transition_cost:
-        report.error("min_transition_cost cannot exceed max_transition_cost.")
-    if config.stock_surplus_ratio < 0:
-        report.error("stock_surplus_ratio must be non-negative.")
+    if config.changeover_cost_level not in {"low", "normal", "high", "mixed"}:
+        report.error("changeover_cost_level must be one of: low, normal, high, mixed.")
+    if config.capacity_level not in {"low", "medium", "large", "mixed"}:
+        report.error("capacity_level must be one of: low, medium, large, mixed.")
+    if config.demand_level not in {"low", "medium", "high", "mixed"}:
+        report.error("demand_level must be one of: low, medium, high, mixed.")
+    if config.stock_level not in {"low", "medium", "high", "mixed"}:
+        report.error("stock_level must be one of: low, medium, high, mixed.")
     if config.coordinate_strategy not in {"uniform", "clustered", "corridor"}:
         report.error("coordinate_strategy must be one of: uniform, clustered, corridor.")
-    if config.vehicles > 0 and config.min_demand > config.vehicles * config.max_capacity:
-        report.error(
-            "min_demand exceeds the maximum quantity the fleet can deliver to one "
-            "station/product pair under the LP split-delivery constraints."
-        )
     if config.min_point_distance > config.grid_size:
         report.warning("min_point_distance is larger than the grid; coordinate retries may be exhausted.")
     return report
 
 
 def validate_instance_data(data: InstanceData) -> VerificationReport:
+    """Validate an in-memory instance against parser and LP feasibility rules."""
     report = VerificationReport()
     nb_p, nb_d, nb_g, nb_s, nb_v = [int(value) for value in data.params]
     expected_shapes = {
@@ -115,15 +106,14 @@ def validate_instance_data(data: InstanceData) -> VerificationReport:
                         "per vehicle for a station/product pair."
                     )
 
-        total = float(total_demand.sum())
-        min_trips = 0 if total <= EPSILON else ceil(total / total_capacity)
-        report.info(f"Minimum uniform trip bound used by lp.py default: {min_trips}.")
+        _check_default_trip_bound_scenario(data, report)
 
     _check_geographic_overlap(data, report)
     return report
 
 
 def validate_parsed_instance(instance: ParsedInstance) -> VerificationReport:
+    """Validate a loaded file and confirm compatibility with the LP parser."""
     report = validate_instance_data(instance)
     report.infos.insert(0, f"UUID: {instance.uuid}")
     report.infos.insert(
@@ -137,6 +127,7 @@ def validate_parsed_instance(instance: ParsedInstance) -> VerificationReport:
 
 
 def _check_ids(name: str, rows: np.ndarray, count: int, report: VerificationReport) -> None:
+    """Check that entity IDs are integer, unique, contiguous, and one-based."""
     ids = rows[:, 0]
     rounded = np.round(ids).astype(int)
     if not np.allclose(ids, rounded):
@@ -156,6 +147,7 @@ def _check_ids(name: str, rows: np.ndarray, count: int, report: VerificationRepo
 
 
 def _check_matrix(data: InstanceData, report: VerificationReport) -> None:
+    """Validate transition costs and warn on unusual symmetric matrices."""
     matrix = data.transition_costs
     if not np.all(np.isfinite(matrix)):
         report.error("Transition costs must be finite.")
@@ -163,6 +155,8 @@ def _check_matrix(data: InstanceData, report: VerificationReport) -> None:
         report.error("Transition costs must be non-negative.")
     if not np.allclose(np.diag(matrix), 0.0):
         report.error("Transition cost diagonal must be zero.")
+    if not np.allclose(matrix, matrix.T):
+        return
 
     violations = []
     for i in range(data.nb_products):
@@ -184,11 +178,136 @@ def _check_matrix(data: InstanceData, report: VerificationReport) -> None:
 
 
 def _check_nonnegative(name: str, values: np.ndarray, report: VerificationReport) -> None:
+    """Check that an array contains no negative values."""
     if np.any(values < -EPSILON):
         report.error(f"{name} must be non-negative.")
 
 
+def _check_default_trip_bound_scenario(data: InstanceData, report: VerificationReport) -> None:
+    """Simulate necessary feasibility conditions for lp.py's default trip bound."""
+    total_capacity = float(data.vehicles[:, 1].sum())
+    product_demands = data.stations[:, 3:].sum(axis=0)
+    total_demand = float(product_demands.sum())
+    min_trips = _minimum_uniform_trip_bound(total_demand, total_capacity)
+    report.info(f"Minimum uniform trip bound used by lp.py default: {min_trips}.")
+
+    active_products = int(np.count_nonzero(product_demands > EPSILON))
+    if min_trips < active_products:
+        report.error(
+            "Default LP trip bound is lower than the number of demanded products: "
+            f"bound={min_trips}, demanded_products={active_products}. Each mini-route carries exactly one product."
+        )
+
+    total_slots = data.nb_vehicles * min_trips
+    if total_slots < active_products:
+        report.error(
+            "Default LP trip slots cannot assign at least one mini-route to each demanded product: "
+            f"vehicles * bound = {data.nb_vehicles} * {min_trips} = {total_slots}, "
+            f"demanded_products={active_products}."
+        )
+
+    required_slots = _minimum_product_slots(data, product_demands)
+    if required_slots > total_slots:
+        report.error(
+            "Default LP trip slots are insufficient for product-level capacity lower bounds: "
+            f"required_slots={required_slots}, available_slots={total_slots}."
+        )
+
+    _simulate_product_capacity_scenarios(data, min_trips, report)
+
+
+def _minimum_uniform_trip_bound(total_demand: float, total_capacity: float) -> int:
+    """Return the same uniform per-vehicle trip bound used by models/lp.py."""
+    if total_demand <= EPSILON:
+        return 0
+    return ceil(total_demand / total_capacity)
+
+
+def _minimum_product_slots(data: InstanceData, product_demands: np.ndarray) -> int:
+    """Estimate the minimum number of single-product trip slots needed."""
+    max_vehicle_capacity = float(data.vehicles[:, 1].max())
+    required = 0
+    for product_idx, product_demand in enumerate(product_demands):
+        if product_demand <= EPSILON:
+            continue
+
+        aggregate_slots = ceil(product_demand / max_vehicle_capacity)
+        station_slots = max(
+            _minimum_distinct_vehicle_slots(float(demand), data.vehicles[:, 1])
+            for demand in data.stations[:, 3 + product_idx]
+            if demand > EPSILON
+        )
+        required += max(1, aggregate_slots, station_slots)
+    return required
+
+
+def _minimum_distinct_vehicle_slots(demand: float, capacities: np.ndarray) -> int:
+    """Find how many different vehicles are needed for one station/product demand."""
+    remaining = demand
+    for slots, capacity in enumerate(sorted(capacities, reverse=True), start=1):
+        remaining -= float(capacity)
+        if remaining <= EPSILON:
+            return slots
+    return len(capacities) + 1
+
+
+def _simulate_product_capacity_scenarios(data: InstanceData, min_trips: int, report: VerificationReport) -> None:
+    """Greedily test whether each product can fit into default trip capacity."""
+    if min_trips < 1:
+        return
+
+    capacities = data.vehicles[:, 1].astype(float)
+    for product_idx in range(data.nb_products):
+        demands = [
+            (int(station[0]), float(station[3 + product_idx]))
+            for station in data.stations
+            if station[3 + product_idx] > EPSILON
+        ]
+        if not demands:
+            continue
+
+        remaining_by_vehicle = [[float(capacity)] * min_trips for capacity in capacities]
+        for station_id, demand in sorted(demands, key=lambda item: item[1], reverse=True):
+            if not _assign_station_product_demand(demand, remaining_by_vehicle):
+                report.warning(
+                    f"Product {product_idx + 1}, station {station_id}: demand {demand:.2f} cannot be assigned "
+                    f"by the greedy scenario within {min_trips} default trip(s) per vehicle without visiting the same "
+                    "station/product twice with one vehicle."
+                )
+                break
+
+
+def _assign_station_product_demand(demand: float, remaining_by_vehicle: list[list[float]]) -> bool:
+    """Assign one station/product demand across distinct vehicles if possible."""
+    remaining = demand
+    used_vehicles: set[int] = set()
+
+    while remaining > EPSILON:
+        best_vehicle = None
+        best_trip = None
+        best_capacity = 0.0
+        for vehicle_idx, trip_capacities in enumerate(remaining_by_vehicle):
+            if vehicle_idx in used_vehicles:
+                continue
+            for trip_idx, capacity in enumerate(trip_capacities):
+                if capacity > best_capacity + EPSILON:
+                    best_vehicle = vehicle_idx
+                    best_trip = trip_idx
+                    best_capacity = capacity
+
+        if best_vehicle is None or best_trip is None:
+            return False
+
+        delivered = min(remaining, best_capacity)
+        remaining_by_vehicle[best_vehicle][best_trip] -= delivered
+        used_vehicles.add(best_vehicle)
+        remaining -= delivered
+
+    return True
+
+
 def _check_geographic_overlap(data: InstanceData, report: VerificationReport) -> None:
+    """Warn when generated physical locations are almost identical."""
     points: list[tuple[str, int, float, float]] = []
     for row in data.depots:
         points.append(("Depot", int(row[0]), float(row[1]), float(row[2])))
@@ -208,6 +327,7 @@ def _check_geographic_overlap(data: InstanceData, report: VerificationReport) ->
 
 
 def _check_lp_parser_compatibility(instance: ParsedInstance, report: VerificationReport) -> None:
+    """Load the file through utils.parser to catch format mismatches."""
     try:
         lp_instance = MPVRPInstance.read(instance.filepath)
     except Exception as exc:

@@ -30,7 +30,7 @@ def _minimum_uniform_trip_bound(instance: MPVRPInstance) -> int:
         return 0
     if fleet_capacity <= EPSILON:
         raise ValueError("The fleet has no usable capacity.")
-    return ceil(total_demand / fleet_capacity)
+    return max(ceil(total_demand / fleet_capacity) + 1, instance.n_prods)
 
 
 def _validate_trip_bound(instance: MPVRPInstance, max_trips_per_vehicle: int) -> None:
@@ -402,12 +402,12 @@ def solve_lp(
 
 if __name__ == "__main__":
     # filename = PROJECT_ROOT / "inst" / "medium" / "MPVRP_M_018_s52_d4_p4.dat"
-    filename = PROJECT_ROOT / "inst" / "generated" / "MPVRP_S_001_s10_d1_p1.dat"
+    filename = PROJECT_ROOT / "inst" / "MPVRP_003_s3_d7_p5.dat"
     instance = MPVRPInstance.read(filename)
     start_time = time.perf_counter()
     sol = solve_lp(
         instance= instance,
-        time_limit=300
+        time_limit=190
     )
     end_time = time.perf_counter()
     if sol:

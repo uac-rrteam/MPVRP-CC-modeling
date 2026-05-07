@@ -20,14 +20,11 @@ class GenerationConfig:
     products: int
     output_dir: Path = DEFAULT_OUTPUT_DIR
     grid_size: float = 100.0
-    min_capacity: int = 4_000
-    max_capacity: int = 10_000
-    min_transition_cost: float = 10.0
-    max_transition_cost: float = 80.0
-    min_demand: int = 500
-    max_demand: int = 5_000
+    changeover_cost_level: str = "normal"
+    capacity_level: str = "medium"
+    demand_level: str = "medium"
+    stock_level: str = "medium"
     demand_probability: float = 0.45
-    stock_surplus_ratio: float = 0.20
     min_point_distance: float = 0.1
     coordinate_strategy: str = "clustered"
     seed: int | None = None

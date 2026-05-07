@@ -1,5 +1,6 @@
 import math
 import platform
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, List, Mapping, Optional, Sequence
@@ -8,6 +9,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_INSTANCE_PATH = PROJECT_ROOT / "inst" / "small" / "MPVRP_S_005_s7_d1_p3.dat"
 DEFAULT_SOLUTIONS_DIR = PROJECT_ROOT / "sol"
 EPSILON = 1e-6
+INSTANCE_FILENAME_RE = re.compile(r"^MPVRP_(?P<instance_id>.+?)_s\d+_d\d+_p\d+\.dat$")
 
 
 @dataclass(frozen=True)
@@ -69,11 +71,17 @@ class MPVRPInstance:
         self.depots: List[DepotNode] = []
         self.garages: List[GarageNode] = []
         self.dist_matrix: List[List[float]] = []
+        self.source_path: Optional[Path] = None
+        self.instance_id: str = "unknown"
 
     @staticmethod
     def read(filename: str | Path) -> 'MPVRPInstance':
         inst = MPVRPInstance()
         filepath = Path(filename)
+        inst.source_path = filepath
+        match = INSTANCE_FILENAME_RE.match(filepath.name)
+        if match:
+            inst.instance_id = match.group("instance_id")
 
         def token_generator():
             with filepath.open('r') as f:
@@ -364,12 +372,19 @@ def write_solution(
         processor: str | None = None,
 ) -> Path:
     if filename is None:
-        filename = DEFAULT_SOLUTIONS_DIR / f"Sol_s{instance.n_stations}_d{instance.n_depots}_p{instance.n_prods}.dat"
+        filename = _default_solution_filename(instance)
 
     filepath = Path(filename)
     filepath.parent.mkdir(parents=True, exist_ok=True)
     filepath.write_text(format_solution(instance, routes, resolution_time, processor))
     return filepath
+
+
+def _default_solution_filename(instance: MPVRPInstance) -> Path:
+    return DEFAULT_SOLUTIONS_DIR / (
+        f"Sol_{instance.instance_id}"
+        f"_s{instance.n_stations}_d{instance.n_depots}_p{instance.n_prods}.dat"
+    )
 
 
 if __name__ == "__main__":
