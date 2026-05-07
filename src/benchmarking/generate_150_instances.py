@@ -9,12 +9,12 @@ from pathlib import Path
 
 import numpy as np
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from tools.generator import configure_logging, generate
-from tools.instance_schema import GenerationConfig
+from src.tools.generator import configure_logging, generate
+from src.tools.instance_schema import GenerationConfig
 
 LOGGER = logging.getLogger("mpvrp.generate_150")
 MAX_GENERATION_ATTEMPTS = 50

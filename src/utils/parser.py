@@ -5,8 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, List, Mapping, Optional, Sequence
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_INSTANCE_PATH = PROJECT_ROOT / "inst" / "small" / "MPVRP_S_005_s7_d1_p3.dat"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_INSTANCE_PATH = PROJECT_ROOT / "inst" / "MPVRP_005_s43_d6_p2.dat"
 DEFAULT_SOLUTIONS_DIR = PROJECT_ROOT / "sol"
 EPSILON = 1e-6
 INSTANCE_FILENAME_RE = re.compile(r"^MPVRP_(?P<instance_id>.+?)_s\d+_d\d+_p\d+\.dat$")

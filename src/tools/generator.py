@@ -9,14 +9,14 @@ import sys
 
 import numpy as np
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from tools.instance_io import existing_instance_codes, write_instance
-from tools.instance_schema import DEFAULT_OUTPUT_DIR, EPSILON, GenerationConfig, InstanceData
-from tools.instance_validation import validate_generation_config, validate_instance_data
-from tools.verificator import log_report, verify_instance
+from src.tools.instance_io import existing_instance_codes, write_instance
+from src.tools.instance_schema import DEFAULT_OUTPUT_DIR, EPSILON, GenerationConfig, InstanceData
+from src.tools.instance_validation import validate_generation_config, validate_instance_data
+from src.tools.verificator import log_report, verify_instance
 
 LOGGER = logging.getLogger("mpvrp.generator")
 
@@ -206,7 +206,7 @@ def _enforce_trip_bound_floor(
     """Raise demand so the default LP trip bound can cover all products.
 
     The LP computes a uniform per-vehicle bound as
-    ceil(total_demand / fleet_capacity). Because each mini-route carries only
+    max(ceil(total_demand / fleet_capacity), n_products). Because each mini-route carries only
     one product, generated instances should not have fewer default trips per
     vehicle than products or product-level capacity lower bounds.
     """

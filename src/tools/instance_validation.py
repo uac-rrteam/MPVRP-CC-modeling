@@ -5,12 +5,14 @@ from math import ceil
 
 import numpy as np
 
-from tools.instance_schema import EPSILON, GenerationConfig, InstanceData, ParsedInstance, PROJECT_ROOT, VerificationReport
+from src.tools.instance_schema import (
+    EPSILON, GenerationConfig, InstanceData, ParsedInstance, PROJECT_ROOT, VerificationReport
+)
+from src.utils.parser import MPVRPInstance
 
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from utils.parser import MPVRPInstance
 
 
 def validate_generation_config(config: GenerationConfig) -> VerificationReport:

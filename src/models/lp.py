@@ -6,7 +6,7 @@ from math import ceil
 
 from gurobipy import GRB, Model, quicksum
 
-from utils.parser import MPVRPInstance, MPVRPNode, write_solution, PROJECT_ROOT
+from src.utils.parser import MPVRPInstance, MPVRPNode, write_solution, PROJECT_ROOT
 
 TIME_LIMIT = 60
 EPSILON = 1e-6

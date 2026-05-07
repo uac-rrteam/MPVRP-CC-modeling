@@ -5,13 +5,13 @@ import logging
 from pathlib import Path
 import sys
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from tools.instance_io import load_instance_file
-from tools.instance_schema import VerificationReport
-from tools.instance_validation import validate_parsed_instance
+from src.tools.instance_io import load_instance_file
+from src.tools.instance_schema import VerificationReport
+from src.tools.instance_validation import validate_parsed_instance
 
 LOGGER = logging.getLogger("mpvrp.verificator")
 

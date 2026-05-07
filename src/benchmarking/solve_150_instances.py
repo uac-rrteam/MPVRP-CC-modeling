@@ -9,11 +9,11 @@ import sys
 
 from gurobipy import GRB
 
-from models.lp import solve_lp
-from tools.generator import configure_logging
-from utils.parser import DEFAULT_SOLUTIONS_DIR, MPVRPInstance, write_solution
+from src.models.lp import solve_lp
+from src.tools.generator import configure_logging
+from src.utils.parser import DEFAULT_SOLUTIONS_DIR, MPVRPInstance, write_solution
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
 	sys.path.insert(0, str(PROJECT_ROOT))
 
