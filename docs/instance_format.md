@@ -1,11 +1,5 @@
 # Instance Format Specification
 
-**MPVRP-CC Team**  
-*Updated May 6, 2026*
-
-This document specifies the `.dat` instance format consumed by
-`utils.parser.MPVRPInstance.read()` and by the LP model in `models/lp.py`.
-
 ## 1. Filename
 
 Use:
@@ -97,7 +91,8 @@ Requirements:
 
 - Costs must be finite and non-negative.
 - The diagonal must be zero.
-- The matrix may be asymmetric. `models/lp.py` uses `cost[previous_product - 1][next_product - 1]`.
+- The matrix may be asymmetric. The solver uses
+  `cost[previous_product - 1][next_product - 1]`.
 
 ## 7. Vehicles
 

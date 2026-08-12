@@ -93,3 +93,12 @@ The time elapsed to generate the solution, in seconds (e.g., `0.245`).
 ---
 
 > A valid solution must satisfy all the constraints.
+
+## 5. Ex-post changeover evaluation
+
+A route produced from a zero-changeover instance can be evaluated afterward
+against the paired original matrix. The `mpvrp-reevaluate-changeovers` command
+preserves the route, products, loads, deliveries, distance, processor, and solve
+time. It changes only the cumulative values shown on product lines and the final
+number and total cost of product changes. By default, the source file is never
+overwritten; a repriced copy is created in a dedicated subdirectory.

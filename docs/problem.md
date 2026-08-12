@@ -1,75 +1,96 @@
-# Multi-Product Vehicle Routing Problem with Split Deliveries and Changeover Cost (MPVRP-CC)
+# Multi-Product Vehicle Routing Problem with Split Deliveries and Changeover Costs
 
-*MPVRP-CC Team — January 25, 2026*
+## 1. Context and motivation
 
----
+Efficient supply-chain management relies on coordinated transportation strategies that ensure timely product distribution while minimizing operational costs. In industries such as petroleum distribution, chemical manufacturing, food distribution, agriculture, pharmaceuticals, and waste collection, a shared fleet may transport several product types from multiple depots to geographically dispersed customers.
 
-## 1. Introduction
+Using the same vehicle for successive products can improve fleet utilization, but it may also require product-specific preparation before the next trip. These operations consume money, labor, equipment, and time. Route planning must therefore account for both geographical efficiency and the operational consequences of changing the product assigned to a vehicle.
 
-The **Multi-Product Vehicle Routing Problem with Split Deliveries and Changeover Cost (MPVRP-CC)** is a complex logistics optimization challenge. It aims to organize the efficient distribution of multiple product types (e.g., different fuels) from a set of depots to a network of service stations.
+The **Multi-Product Vehicle Routing Problem with Split Deliveries and Changeover Costs (MPVRP-CC)** determines vehicle routes, delivered quantities, depot assignments, and product sequences that satisfy all customer demands at minimum total cost.
 
-This documentation presents the MPVRP-CC, a variant of the classic vehicle routing problem applied to the distribution of petroleum products. It involves optimizing tanker truck routes that must deliver different types of fuels, taking into account the cleaning cost when a vehicle changes products.
+The problem is industry-independent. Petroleum distribution is one relevant application, but it is only one example of the broader planning setting.
 
----
+## 2. Logistics network
 
-## 2. Mathematical Notation
+The problem is defined by the following sets:
 
-The problem is modeled on the following sets:
+- **K**: heterogeneous vehicles, each with a capacity, a home garage, and an initial product configuration;
+- **P**: products to distribute;
+- **G**: garages from which vehicles depart and to which they return;
+- **D**: depots where products are stocked and loaded;
+- **S**: customer locations with a demand for one or more products.
 
-- **K**: Set of available trucks, K = {1, . . . , |K|}
-- **P**: Set of products to distribute, P = {1, . . . , |P|}
-- **G**: Set of garages (truck departure/arrival points), G = {1, . . . , |G|}
-- **D**: Set of depots (loading points), D = {1, . . . , |D|}
-- **S**: Set of service stations (customers), S = {1, . . . , |S|}
+Every depot, garage, and customer has a geographical position. Transportation costs are based on the distance between locations. Each depot holds a finite stock of every product, and each vehicle can carry at most its stated capacity.
 
-The logistics network connects these different sites. A distance matrix defines the separation between each pair of locations. Each service station expresses a specific demand for each product type. To meet this demand, a heterogeneous fleet of tanker trucks is deployed. Each vehicle has a defined loading capacity and is attached to a specific garage.
+## 3. Vehicle operations
 
----
+A vehicle route starts at its assigned garage, contains one or more delivery trips, and ends at the same garage:
 
-## 3. Operational Framework
+```text
+Garage → [Depot → Customers → Depot] ... → Garage
+```
 
-Truck operations follow a rigorous structure:
+Each depot-to-customer cycle is called a **mini-route** or **trip**. During one trip, a vehicle:
 
-> **Garage → [Depot → Customers]... → Garage**
+1. travels to a depot;
+2. is prepared and loaded with exactly one product;
+3. visits one or more customers requiring that product;
+4. returns to a depot, either to begin another trip or to return to its garage.
 
-### 3.1 Route Structure
+A vehicle carries only one product during a trip. It may nevertheless carry different products on successive trips.
 
-A complete route must start and end at the vehicle's assigned garage. It consists of a succession of **mini-routes**.
+## 4. Changeover costs
 
-A mini-route corresponds to a delivery cycle composed of three phases:
+A **changeover** occurs when the product assigned to a vehicle for its next trip differs from its current product configuration. The changeover cost is an aggregate operational cost, not merely a tank-cleaning cost.
 
-- **Loading**: The truck goes to a depot to load one (and only one) product type.
-- **Delivery**: It then serves one or more service stations to deliver this product.
-- **Return**: Once empty or the route is complete, it returns to a depot to reload or goes back to its garage.
+Depending on the application, it may represent:
 
-### 3.2 Multi-Product Management
+- cleaning, purging, washing, drying, or decontamination;
+- loading-related preparation and product-handling operations;
+- equipment, tank, compartment, hose, or temperature reconfiguration;
+- quality-control, safety, inspection, and certification procedures;
+- labor and consumable materials;
+- setup delays, vehicle downtime, and the associated loss of availability;
+- administrative or coordination activities required before the next trip.
 
-The particularity of this problem lies in product management:
+These costs are represented by a directed product-to-product matrix. A transition from product `p` to product `q` may have a different cost from the reverse transition. The diagonal is zero because continuing with the same product does not trigger an additional changeover in the current model.
 
-- A truck can only transport **one product type at a time** (single or dedicated compartment).
-- Each truck is **initially configured** for a given product.
-- **Changeover cost**: It is possible to change products during a visit to the depot. However, this operation requires tank cleaning which incurs a specific cost. The optimization must therefore balance between making detours to keep the same product or paying this cost to change products on site.
+The initial configuration of each vehicle is also considered: if its first trip uses another product, the corresponding initial changeover cost is incurred.
 
----
+## 5. Split deliveries
 
-## 4. Objectives and Constraints
+A customer’s demand for a product may exceed one vehicle’s capacity or may be more efficiently distributed among several vehicles. The model therefore permits **split deliveries**: the demand of a customer-product pair can be divided among multiple vehicles.
 
-### 4.1 Objective Function
+The complete demand must still be delivered exactly. In the implemented formulation, a given vehicle can serve the same customer-product pair at most once over its trips, so a split is performed across distinct vehicles.
 
-The objective of MPVRP-CC is to determine the routes for the entire fleet in order to **minimize the total cost**, composed of:
+## 6. Objective
 
-- **Transportation cost** (proportional to the total distance traveled).
-- **Total product changeover cost** (tank cleaning).
+The objective is to minimize the sum of:
 
-### 4.2 Constraints
+- travel distance within delivery trips;
+- initial and inter-trip changeover costs.
 
-A valid solution must strictly respect the following constraints:
+This objective captures the trade-off at the center of the problem. A geographically shorter plan may require expensive product changes, while a longer route may preserve a vehicle’s current configuration and reduce preparation costs.
 
-- **Demand satisfaction**: All station demands, for all products, must be fully delivered.
-- **Capacity**: The loaded quantity must never exceed the truck's maximum capacity.
-- **Flow**: Each truck must end its day at its home garage.
-- **Uniqueness**: A truck does not serve the same station multiple times for the same product during a single mini-route.
+## 7. Main constraints
 
-### Assumptions
+A feasible solution must satisfy the following requirements:
 
-> We assume that all depots have sufficient stock to satisfy all demands and that all sites are accessible without time constraints.
+- every customer demand is delivered exactly;
+- every vehicle load respects its capacity;
+- the quantity loaded from a depot does not exceed its available stock;
+- each active trip selects exactly one product and begins and ends at a depot;
+- a station is visited during a trip only when it demands the product carried;
+- every used vehicle starts and ends at its assigned garage;
+- active trips are consecutive and form connected routes without isolated subtours.
+
+The current problem does not include delivery time windows, explicit service durations, or depot replenishment. Distances are Euclidean, and every location is assumed to be accessible.
+
+## 8. Comparative experiment
+
+The repository provides two paired benchmark scenarios:
+
+- **with changeover costs**: the original product-transition matrices are retained;
+- **without changeover costs**: the same instances are used, but every transition cost is set to zero.
+
+Within each pair, the UUID, fleet, locations, stocks, demands, capacities, and initial vehicle products are identical. Comparing the resulting solutions isolates the influence of changeover costs on vehicle utilization, product sequences, depot choices, route geometry, and total distance.
