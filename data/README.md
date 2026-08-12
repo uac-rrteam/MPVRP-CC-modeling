@@ -22,3 +22,7 @@ Solutions and reports are separated by experimental scenario:
 - `solutions/without_changeover_costs/`
 
 This separation prevents one experiment from overwriting the results of the other.
+
+`solutions/without_changeover_costs/reevaluated_with_changeover_costs/` contains
+optional copies of zero-cost solutions repriced afterward with the original
+transition matrix. Routes and delivered quantities remain unchanged.

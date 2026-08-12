@@ -70,6 +70,18 @@ Solve the paired benchmark with zero costs:
 mpvrp-solve-benchmark --scenario without_changeover_costs --time-limit 190
 ```
 
+Re-evaluate a fixed zero-cost solution with the original changeover matrix:
+
+```bash
+mpvrp-reevaluate-changeovers \
+  data/solutions/without_changeover_costs/Sol_003_s3_d7_p5.dat
+```
+
+This does not rerun the solver or alter the source solution. It writes a copy
+under `data/solutions/without_changeover_costs/reevaluated_with_changeover_costs/`
+and updates only the cumulative costs on product lines and the two changeover
+metrics (number of changes and total cost).
+
 Each scenario writes solutions and its `benchmark_report.csv` to the corresponding directory under `data/solutions/`.
 
 ## Paired experimental design
