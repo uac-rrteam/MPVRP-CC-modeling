@@ -1,84 +1,79 @@
-# MPVRP-CC Python Workspace
+# MPVRP-CC
 
-Python tools and models for the **Multi-Product Vehicle Routing Problem with Split Deliveries and Changeover Cost (MPVRP-CC)**.
+Python tools for generating, validating, and solving the **Multi-Product Vehicle Routing Problem with Split Deliveries and Changeover Costs**.
 
-## About MPVRP-CC
+The project studies how product-transition costs influence route planning for a heterogeneous fleet serving multiple products, depots, and customers. Changeover costs represent the operational preparation required when a vehicle switches products, including cleaning, handling, reconfiguration, labor, controls, and downtime.
 
-A complex logistics optimization challenge for distributing multiple petroleum product types from depots to service stations. A heterogeneous fleet of tanker trucks is used, where each vehicle can carry only **one product type at a time**. During a route, vehicles can change the product they transport at a depot, but this incurs a **tank cleaning (changeover) cost**. The goal is to route the fleet minimizing total transportation distance and changeover costs.
+## Project layout
 
-## Getting Started
-
-### Clone the Repository
-```bash
-git clone https://github.com/your-org/MPVRP-CC.git
-cd python
-```
-
-### Install Dependencies
-```bash
-# Using uv (recommended)
-uv sync
-
-# Or using pip
-pip install -e .
-```
-
-## Project Structure
-
-```
+```text
 .
-├── src/
-│   ├── benchmarking/
-│   │   ├── generate_150_instances.py    # Build benchmark set & manifest.csv
-│   │   └── solve_150_instances.py       # Solve all instances, write solutions & report
-│   ├── models/
-│   │   └── lp.py                        # MILP model & solver (Gurobi)
-│   ├── tools/
-│   │   ├── generator.py                 # Instance generator CLI
-│   │   ├── verificator.py               # Instance validator
-│   │   ├── instance_schema.py           # Schema definition
-│   │   ├── instance_io.py               # I/O logic
-│   │   └── instance_validation.py       # Validation logic
-│   └── utils/
-│       └── parser.py                    # Instance parser & solution formatter
-├── docs/
-│   ├── problem.md                       # Problem description
-│   ├── instance_format.md               # Input format specification
-│   ├── solution_format.md               # Output format specification
-│   └── lp_model.tex                     # Mathematical formulation
-├── inst/                                # Instance files (150 benchmark instances)
-│   └── manifest.csv                     # Benchmark metadata
-├── sol/                                 # Solution files
-├── pyproject.toml
-└── README.md
+├── src/mpvrp_cc/
+│   ├── cli/                 # Command-line validation
+│   ├── experiments/         # Benchmark generation, pairing, and solving
+│   ├── generation/          # Instance generation, schemas, I/O, and validation
+│   ├── io/                  # Instance parsing and solution serialization
+│   ├── optimization/        # Canonical Gurobi MILP solver
+│   └── paths.py             # Central project paths
+├── data/
+│   ├── instances/
+│   │   ├── with_changeover_costs/     # 150 original instances
+│   │   ├── without_changeover_costs/  # 150 paired zero-cost instances
+│   │   └── generated/                 # Ad hoc generated instances
+│   └── solutions/
+│       ├── with_changeover_costs/
+│       └── without_changeover_costs/
+├── docs/                    # Problem and file-format documentation
+├── results/figures/         # Existing analysis figures
+└── pyproject.toml
 ```
 
-## Requirements
+## Installation
 
-- Python `>=3.12`
-- Dependencies: `numpy`, `scipy`, `ortools`, `gurobipy`
-
-## Quick Start
+Python 3.12 or later and a valid Gurobi installation/license are required.
 
 ```bash
-# Generate a single instance
-python -m tools.generator -v 5 -d 2 -g 2 -s 12 -p 3 --id S_001
-
-# Validate an instance file
-python -m tools.verificator inst/MPVRP_003_s3_d7_p5.dat
-
-# Generate the 150-instance benchmark
-python -m benchmarking.generate_150_instances --count 150
-
-# Solve the benchmark (190s time limit per instance)
-python -m benchmarking.solve_150_instances --time-limit 190
+uv sync
 ```
 
-## Documentation
+After installation, the project exposes dedicated commands. During local development, the equivalent modules can also be run with `PYTHONPATH=src python -m ...`.
 
-See `docs/` for detailed documentation:
-- **problem.md**: Problem definition and constraints
-- **instance_format.md**: Input `.dat` file format
-- **solution_format.md**: Output solution format
-- **lp_model.tex**: Mathematical LP formulation
+## Common commands
 
+Generate one instance:
+
+```bash
+mpvrp-generate -v 5 -d 2 -g 2 -s 12 -p 3 --id S_001
+```
+
+Validate an instance:
+
+```bash
+mpvrp-validate data/instances/with_changeover_costs/MPVRP_003_s3_d7_p5.dat
+```
+
+Recreate the paired zero-changeover dataset:
+
+```bash
+mpvrp-prepare-scenarios --force
+```
+
+Solve the benchmark with the original costs:
+
+```bash
+mpvrp-solve-benchmark --scenario with_changeover_costs --time-limit 190
+```
+
+Solve the paired benchmark with zero costs:
+
+```bash
+mpvrp-solve-benchmark --scenario without_changeover_costs --time-limit 190
+```
+
+Each scenario writes solutions and its `benchmark_report.csv` to the corresponding directory under `data/solutions/`.
+
+## Paired experimental design
+
+Files with the same name in the two instance directories form a pair. The zero-cost version preserves every original field and replaces only the product changeover matrix with zeros. This makes it possible to attribute route differences specifically to the presence or absence of changeover costs.
+
+See [docs/problem.md](docs/problem.md), [docs/instance_format.md](docs/instance_format.md), and [docs/solution_format.md](docs/solution_format.md) for the complete specifications.

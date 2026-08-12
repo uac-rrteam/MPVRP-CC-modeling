@@ -60,7 +60,7 @@
 
 \begin{abstract}
 This document states the mixed-integer linear programming model implemented in
-\texttt{models/lp.py} for the Multi-Product Vehicle Routing Problem with Split
+\texttt{mpvrp\_cc/optimization/milp\_solver.py} for the Multi-Product Vehicle Routing Problem with Split
 Deliveries and Changeover Costs (MPVRP-CC). Each vehicle may perform a bounded
 number of mini-routes. A mini-route starts at one depot, loads one product,
 visits one or more stations, and ends at one depot. The model minimizes travel
@@ -402,7 +402,8 @@ The variable \(r_{ktd}\) is the logical AND of ending trip \((k,t)\) at depot
 
 \section{Implementation Notes}
 
-The notation above follows the implemented model in \texttt{models/lp.py}. The
+The notation above follows the implemented model in
+\texttt{mpvrp\_cc/optimization/milp\_solver.py}. The
 Python code uses zero-based product indices internally, while product
 identifiers in instance files may be one-based. The allowed route arcs contain
 depot-to-station, station-to-station, and station-to-depot arcs, but not

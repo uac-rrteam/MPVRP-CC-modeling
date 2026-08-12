@@ -1,7 +1,7 @@
 [project]
-name = "python"
+name = "mpvrp-cc"
 version = "0.1.0"
-description = "Add your description here"
+description = "Generation and MILP optimization tools for the MPVRP-CC"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -16,3 +16,17 @@ dependencies = [
     "scipy>=1.17.1",
     "seaborn>=0.13.2",
 ]
+
+[project.scripts]
+mpvrp-generate = "mpvrp_cc.generation.instance_generator:main"
+mpvrp-validate = "mpvrp_cc.cli.validate_instance:main"
+mpvrp-prepare-scenarios = "mpvrp_cc.experiments.create_changeover_scenarios:main"
+mpvrp-generate-benchmark = "mpvrp_cc.experiments.generate_benchmark:main"
+mpvrp-solve-benchmark = "mpvrp_cc.experiments.solve_benchmark:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
