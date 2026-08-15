@@ -17,6 +17,7 @@ mpvrp-prepare-scenarios = "mpvrp_cc.experiments.create_changeover_scenarios:main
 mpvrp-reevaluate-changeovers = "mpvrp_cc.experiments.reevaluate_changeover_costs:main"
 mpvrp-generate-benchmark = "mpvrp_cc.experiments.generate_benchmark:main"
 mpvrp-solve-benchmark = "mpvrp_cc.experiments.solve_benchmark:main"
+mpvrp-generate-article-figures = "mpvrp_cc.experiments.generate_article_figures:main"
 
 [build-system]
 requires = ["setuptools>=68"]
