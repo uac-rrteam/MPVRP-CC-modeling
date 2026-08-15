@@ -16,6 +16,10 @@ EPSILON = 1e-6
 @dataclass(frozen=True)
 class MilpSolution:
     objective: float
+    best_bound: float
+    mip_gap: float
+    node_count: float
+    solver_runtime: float
     status: int
     routes: list[dict]
 
@@ -397,8 +401,16 @@ def solve_milp(
                 }
             )
 
-    print(f"Solution found with objective value: {m.objVal}")
-    return MilpSolution(objective=m.objVal, status=m.status, routes=routes)
+    print(f"Solution found with objective value: {m.ObjVal}")
+    return MilpSolution(
+        objective=float(m.ObjVal),
+        best_bound=float(m.ObjBound),
+        mip_gap=float(m.MIPGap),
+        node_count=float(m.NodeCount),
+        solver_runtime=float(m.Runtime),
+        status=m.Status,
+        routes=routes,
+    )
 
 
 if __name__ == "__main__":

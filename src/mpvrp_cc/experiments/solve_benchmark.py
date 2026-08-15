@@ -77,6 +77,11 @@ def solve_dataset(args: argparse.Namespace) -> Path:
 		status = "UNSOLVED"
 		solver_status = ""
 		objective = ""
+		best_bound = ""
+		mip_gap = ""
+		mip_gap_percent = ""
+		node_count = ""
+		solver_runtime = ""
 		solution_file = ""
 		message = ""
 
@@ -92,6 +97,11 @@ def solve_dataset(args: argparse.Namespace) -> Path:
 				status = "SOLVED"
 				solver_status = "OPTIMAL" if solution.status == GRB.OPTIMAL else "TIME_LIMIT"
 				objective = f"{solution.objective:.6f}"
+				best_bound = f"{solution.best_bound:.6f}"
+				mip_gap = f"{solution.mip_gap:.8f}"
+				mip_gap_percent = f"{100.0 * solution.mip_gap:.4f}"
+				node_count = f"{solution.node_count:.0f}"
+				solver_runtime = f"{solution.solver_runtime:.6f}"
 				elapsed = time.perf_counter() - start
 				solution_path = _solution_path(instance, args.solutions_dir)
 				write_solution(instance=instance, routes=solution.routes, filename=solution_path, resolution_time=elapsed)
@@ -111,13 +121,32 @@ def solve_dataset(args: argparse.Namespace) -> Path:
 				"status": status,
 				"solver_status": solver_status,
 				"objective": objective,
+				"best_bound": best_bound,
+				"mip_gap": mip_gap,
+				"mip_gap_percent": mip_gap_percent,
+				"node_count": node_count,
+				"solver_runtime": solver_runtime,
 				"solution_file": solution_file,
 				"message": message,
 			}
 		)
 
 	with report_path.open("w", newline="") as file:
-		fieldnames = ["id", "file", "instance_path", "status", "solver_status", "objective", "solution_file", "message"]
+		fieldnames = [
+			"id",
+			"file",
+			"instance_path",
+			"status",
+			"solver_status",
+			"objective",
+			"best_bound",
+			"mip_gap",
+			"mip_gap_percent",
+			"node_count",
+			"solver_runtime",
+			"solution_file",
+			"message",
+		]
 		writer = csv.DictWriter(file, fieldnames=fieldnames)
 		writer.writeheader()
 		writer.writerows(report_rows)

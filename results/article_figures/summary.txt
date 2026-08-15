@@ -1,0 +1,51 @@
+MPVRP-CC article figure summary
+================================
+Paired instances included: 118
+Excluded instances: 32
+Pairs proven optimal in both scenarios: 12
+Pairs where the changeover-aware incumbent has lower evaluated cost: 60/118
+Median net cost saving: 0.27%
+Median reduction in product changes: 0.50
+
+Solver outcomes:
+- Changeover-aware: 15 optimal, 106 time-limit incumbents, 29 unsolved
+- Changeover ignored: 12 optimal, 109 time-limit incumbents, 29 unsolved
+
+Interpretation warning:
+Most paired observations are time-limit incumbents. Cost differences must not be described as
+optimality improvements unless both runs for an instance are proven optimal.
+Operational cost in these figures is reported distance plus reported changeover cost.
+
+Exclusions:
+- 006: at least one scenario is unsolved
+- 007: at least one scenario is unsolved
+- 017: at least one scenario is unsolved
+- 020: at least one scenario is unsolved
+- 023: at least one scenario is unsolved
+- 025: at least one scenario is unsolved
+- 032: at least one scenario is unsolved
+- 036: at least one scenario is unsolved
+- 046: at least one scenario is unsolved
+- 050: at least one scenario is unsolved
+- 054: at least one scenario is unsolved
+- 058: at least one scenario is unsolved
+- 063: at least one scenario is unsolved
+- 078: at least one scenario is unsolved
+- 079: at least one scenario is unsolved
+- 085: at least one scenario is unsolved
+- 087: at least one scenario is unsolved
+- 089: at least one scenario is unsolved
+- 099: at least one scenario is unsolved
+- 102: at least one scenario is unsolved
+- 104: at least one scenario is unsolved
+- 106: at least one scenario is unsolved
+- 110: at least one scenario is unsolved
+- 112: at least one scenario is unsolved
+- 120: at least one scenario is unsolved
+- 124: at least one scenario is unsolved
+- 125: at least one scenario is unsolved
+- 126: at least one scenario is unsolved
+- 128: at least one scenario is unsolved
+- 131: at least one scenario is unsolved
+- 132: at least one scenario is unsolved
+- 150: at least one scenario is unsolved
