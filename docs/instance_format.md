@@ -5,21 +5,20 @@
 Use:
 
 ```text
-MPVRP_A_B_sC_dD_pE.dat
+MPVRP_<code>_s<S>_d<D>_p<P>.dat
 ```
 
 | Field | Meaning |
 | --- | --- |
-| `A` | Size category: `S`, `M`, or `L` |
-| `B` | Instance number, usually three digits such as `001` |
-| `C` | Number of service stations |
+| `code` | Numeric benchmark ID such as `001`, or an ad hoc code such as `S_001` |
+| `S` | Number of service stations |
 | `D` | Number of depots |
-| `E` | Number of products |
+| `P` | Number of products |
 
 Example:
 
 ```text
-MPVRP_S_001_s9_d1_p2.dat
+MPVRP_003_s37_d2_p2.dat
 ```
 
 ## 2. Parser Rules

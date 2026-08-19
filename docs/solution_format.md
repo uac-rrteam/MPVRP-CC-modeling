@@ -40,7 +40,9 @@ This line indicates which product is transported at each step and the
 cumulative transition cost. A cost is added at the start of every trip,
 including a low preparation cost when the product remains unchanged.
 
-> **Important:** The two lines must be perfectly aligned in terms of the number of steps. Each element in the visit sequence corresponds to exactly one element in the product sequence.
+> **Important:** Product entries align with the initial garage, each loading
+> depot, and each delivered station. The terminal garage appears only on the
+> visit line because no product transition occurs after the last trip.
 
 ---
 

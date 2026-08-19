@@ -2,9 +2,11 @@
 
 ## Instances
 
-- `instances/with_changeover_costs/` receives newly generated benchmark instances.
-- `instances/without_changeover_costs/` receives their paired counterparts with zero-valued transition matrices.
-- `instances/generated/` contains ad hoc instances that are not part of the main benchmark.
+- `instances/with_changeover_costs/` contains 100 cost-bearing benchmark instances.
+- `instances/without_changeover_costs/` contains their 100 paired counterparts with zero-valued transition matrices.
+
+The cost-bearing set contains 34 `normal`, 33 `high`, and 33 `mixed`
+transition-cost regimes. Every instance has between two and six products.
 
 Files with the same name in the two benchmark directories describe the same underlying instance. Only the `NbProducts × NbProducts` transition-cost matrix differs. After generation and scenario preparation, both directories contain the same `manifest.csv` so benchmark rows can be matched directly by instance ID.
 

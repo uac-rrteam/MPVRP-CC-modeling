@@ -194,11 +194,11 @@ def generate_dataset(args: argparse.Namespace) -> Path:
 
 
 def parse_args() -> argparse.Namespace:
-    """Parse CLI arguments for the 150-instance benchmark generator."""
+    """Parse CLI arguments for the benchmark generator."""
     parser = argparse.ArgumentParser(
         description="Generate a balanced dataset of MPVRP-CC instances with numeric IDs only."
     )
-    parser.add_argument("--count", type=int, default=150, help="Number of instances to generate.")
+    parser.add_argument("--count", type=int, default=100, help="Number of instances to generate.")
     parser.add_argument("--start-id", type=int, default=1, help="First numeric instance ID.")
     parser.add_argument(
         "-o",

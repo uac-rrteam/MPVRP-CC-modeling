@@ -19,10 +19,15 @@ from mpvrp_cc.generation.instance_generator import (
 )
 from mpvrp_cc.generation.config import GenerationConfig
 from mpvrp_cc.generation.instance_file_io import write_instance
+from mpvrp_cc.generation.validation import _minimum_uniform_trip_bound
 from mpvrp_cc.io.instance_solution_io import MPVRPInstance
 
 
 class ChangeoverGenerationTests(unittest.TestCase):
+    def test_validation_trip_bound_matches_solver_formula(self) -> None:
+        self.assertEqual(_minimum_uniform_trip_bound(100, 100, 3), 3)
+        self.assertEqual(_minimum_uniform_trip_bound(500, 100, 2), 6)
+
     def test_main_benchmark_excludes_low_changeover_level(self) -> None:
         self.assertEqual(CHANGEOVER_LEVELS, ("normal", "high", "mixed"))
 

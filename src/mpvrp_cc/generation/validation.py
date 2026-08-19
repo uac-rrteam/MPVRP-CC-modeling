@@ -279,7 +279,7 @@ def _check_default_trip_bound_scenario(data: InstanceData, report: VerificationR
     """Simulate necessary feasibility conditions for lp.py's default trip bound.
 
     The LP model uses a uniform per-vehicle trip bound calculated as:
-    max(ceil(total_demand / fleet_capacity), num_products)
+    max(ceil(total_demand / fleet_capacity) + 1, num_products)
 
     This function checks:
     1. The bound is at least the number of demanded products (each product needs mini-routes)
@@ -292,7 +292,7 @@ def _check_default_trip_bound_scenario(data: InstanceData, report: VerificationR
     total_demand = float(product_demands.sum())
 
     # Calculate the trip bound that lp.py will use
-    min_trips = _minimum_uniform_trip_bound(total_demand, total_capacity)
+    min_trips = _minimum_uniform_trip_bound(total_demand, total_capacity, data.nb_products)
     report.info(f"Minimum uniform trip bound used by lp.py default: {min_trips}.")
 
     # Check 1: bound must accommodate all demanded products
@@ -324,7 +324,11 @@ def _check_default_trip_bound_scenario(data: InstanceData, report: VerificationR
     _simulate_product_capacity_scenarios(data, min_trips, report)
 
 
-def _minimum_uniform_trip_bound(total_demand: float, total_capacity: float) -> int:
+def _minimum_uniform_trip_bound(
+    total_demand: float,
+    total_capacity: float,
+    product_count: int,
+) -> int:
     """Return the same uniform per-vehicle trip bound used by the MILP solver.
 
     This is the key feasibility calculation: how many trips does each vehicle need
@@ -332,7 +336,7 @@ def _minimum_uniform_trip_bound(total_demand: float, total_capacity: float) -> i
     """
     if total_demand <= EPSILON:
         return 0
-    return ceil(total_demand / total_capacity)
+    return max(ceil(total_demand / total_capacity) + 1, product_count)
 
 
 def _minimum_product_slots(data: InstanceData, product_demands: np.ndarray) -> int:

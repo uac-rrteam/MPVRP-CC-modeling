@@ -74,17 +74,20 @@ product.
 
 Let \(R\) be the maximum number of mini-routes allowed for each vehicle. In the
 implementation, this value is the argument
-\texttt{max\_trips\_per\_vehicle}. If it is not provided, the code computes the
-lower bound
+\texttt{max\_trips\_per\_vehicle}. If it is not provided, the code computes
 \[
     R =
-    \left\lceil
-    \frac{\sum_{s \in S}\sum_{p \in P} H_{sp}}
-         {\sum_{k \in K} Q_k}
-    \right\rceil ,
+    \max\left\{
+        \left\lceil
+        \frac{\sum_{s \in S}\sum_{p \in P} H_{sp}}
+             {\sum_{k \in K} Q_k}
+        \right\rceil + 1,
+        |P|
+    \right\},
 \]
 where \(H_{sp}\) is the demand of station \(s\) for product \(p\), and \(Q_k\)
-is the capacity of vehicle \(k\).
+is the capacity of vehicle \(k\). The additional slot provides scheduling
+slack, while the \(|P|\) floor allows every product to occupy a trip position.
 
 The model allows split deliveries. Therefore, the demand of a station for a
 product may be served by several vehicles or by several trips, subject to the
@@ -126,7 +129,7 @@ Symbol & Description \\
 \(B_{dp}\) & Stock of product \(p\) available at depot \(d\). \\
 \(g(k)\) & Home garage of vehicle \(k\). \\
 \(p^0_k\) & Initial product configuration of vehicle \(k\). \\
-\(C_{pp'}\) & Changeover cost from product \(p\) to product \(p'\). \\
+\(C_{pp'}\) & Transition/preparation cost from product \(p\) to product \(p'\), including \(p=p'\). \\
 \(\Delta_{ij}\) & Distance between nodes \(i\) and \(j\). \\
 \(M=|S|\) & Big-\(M\) value used for station ordering. \\
 \bottomrule

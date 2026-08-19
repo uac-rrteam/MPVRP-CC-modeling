@@ -73,7 +73,7 @@ The complete demand must still be delivered exactly. In the implemented formulat
 The objective is to minimize the sum of:
 
 - travel distance within delivery trips;
-- initial and inter-trip changeover costs.
+- initial and inter-trip transition/preparation costs.
 
 This objective captures the trade-off at the center of the problem. A geographically shorter plan may require expensive product changes, while a longer route may preserve a vehicle’s current configuration and reduce preparation costs.
 
@@ -95,7 +95,7 @@ The current problem does not include delivery time windows, explicit service dur
 
 The repository provides two paired benchmark scenarios:
 
-- **with changeover costs**: the original product-transition matrices are retained;
+- **with transition costs**: the cost-bearing product-transition matrices are retained;
 - **without changeover costs**: the same instances are used, but every transition cost is set to zero.
 
-Within each pair, the UUID, fleet, locations, stocks, demands, capacities, and initial vehicle products are identical. Comparing the resulting solutions isolates the influence of changeover costs on vehicle utilization, product sequences, depot choices, route geometry, and total distance.
+Within each pair, the UUID, fleet, locations, stocks, demands, capacities, and initial vehicle products are identical. Comparing the resulting solutions isolates the influence of transition and preparation costs on vehicle utilization, product sequences, depot choices, route geometry, and total distance.

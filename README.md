@@ -19,12 +19,11 @@ The project studies how product-transition costs influence route planning for a 
 │   ├── instances/
 │   │   ├── with_changeover_costs/     # Generated benchmark instances
 │   │   ├── without_changeover_costs/  # Paired zero-cost instances
-│   │   └── generated/                 # Ad hoc generated instances
 │   └── solutions/
 │       ├── with_changeover_costs/
 │       └── without_changeover_costs/
 ├── docs/                    # Problem and file-format documentation
-├── results/figures/         # Existing analysis figures
+├── results/article_figures/ # Generated analysis figures
 └── pyproject.toml
 ```
 
@@ -49,7 +48,7 @@ mpvrp-generate -v 5 -d 2 -g 2 -s 12 -p 3 --id S_001
 Generate the main experimental benchmark:
 
 ```bash
-mpvrp-generate-benchmark --count 150
+mpvrp-generate-benchmark --count 100
 ```
 
 The main benchmark always contains at least two products and samples `normal`,
@@ -61,10 +60,13 @@ numeric values stored in newly generated instance files are integers. The
 parser also exposes an integer distance matrix, rounded to the nearest unit for
 constraint programming; the MILP continues to use exact Euclidean distances.
 
+The current benchmark contains 100 paired instances. Its transition-cost
+regimes are balanced as follows: 34 `normal`, 33 `high`, and 33 `mixed`.
+
 Validate an instance:
 
 ```bash
-mpvrp-validate data/instances/with_changeover_costs/MPVRP_003_s3_d7_p5.dat
+mpvrp-validate data/instances/with_changeover_costs/MPVRP_003_s37_d2_p2.dat
 ```
 
 Recreate the paired zero-changeover dataset:
@@ -73,7 +75,7 @@ Recreate the paired zero-changeover dataset:
 mpvrp-prepare-scenarios --force
 ```
 
-Solve the benchmark with the original costs:
+Solve the benchmark with transition costs:
 
 ```bash
 mpvrp-solve-benchmark --scenario with_changeover_costs --time-limit 190
@@ -85,22 +87,22 @@ Solve the paired benchmark with zero costs:
 mpvrp-solve-benchmark --scenario without_changeover_costs --time-limit 190
 ```
 
-Re-evaluate a fixed zero-cost solution with the original changeover matrix:
+Re-evaluate a fixed zero-cost solution with the cost-bearing transition matrix:
 
 ```bash
 mpvrp-reevaluate-changeovers \
-  data/solutions/without_changeover_costs/Sol_003_s3_d7_p5.dat
+  data/solutions/without_changeover_costs/Sol_003_s37_d2_p2.dat
 ```
 
 This does not rerun the solver or alter the source solution. It writes a copy
 under `data/solutions/without_changeover_costs/reevaluated_with_changeover_costs/`
-and updates only the cumulative costs on product lines and the two changeover
-metrics (number of changes and total cost).
+and updates only the cumulative costs on product lines, the number of genuine
+product changes, and the total transition cost.
 
 Each scenario writes solutions and its `benchmark_report.csv` to the corresponding directory under `data/solutions/`.
 
 ## Paired experimental design
 
-Files with the same name in the two instance directories form a pair. The zero-cost version preserves every original field and replaces only the product changeover matrix with zeros. This makes it possible to attribute route differences specifically to the presence or absence of changeover costs.
+Files with the same name in the two instance directories form a pair. The zero-cost version preserves every other field and replaces only the product-transition matrix with zeros. This makes it possible to attribute route differences specifically to the presence or absence of transition and preparation costs.
 
 See [docs/problem.md](docs/problem.md), [docs/instance_format.md](docs/instance_format.md), and [docs/solution_format.md](docs/solution_format.md) for the complete specifications.

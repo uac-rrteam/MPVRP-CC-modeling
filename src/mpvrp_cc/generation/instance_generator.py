@@ -299,9 +299,9 @@ def _enforce_trip_bound_floor(
 ) -> None:
     """Raise demand so the default LP trip bound can cover all products.
 
-    The LP solver computes a trip bound as max(ceil(demand/capacity), num_products).
-    This ensures each vehicle can make enough trips to carry all products at least once.
-    If generated demand is too low, we boost it to maintain problem feasibility.
+    The LP solver computes a trip bound as
+    max(ceil(demand/capacity) + 1, num_products). This function raises demand
+    only when that bound would not provide enough product-trip slots.
     """
     total_fleet_capacity = int(vehicle_capacities.sum())
     if config.products <= 1 or total_fleet_capacity <= 0:
@@ -310,7 +310,10 @@ def _enforce_trip_bound_floor(
     # Attempt up to 20 iterations to reach feasibility
     for _ in range(20):
         current_total = int(round(float(total_demands.sum())))
-        current_bound = ceil(current_total / total_fleet_capacity)
+        current_bound = max(
+            ceil(current_total / total_fleet_capacity) + 1,
+            config.products,
+        )
 
         # Calculate the minimum trip slots needed based on current demands
         required_slots = _minimum_generated_product_slots(stations, vehicle_capacities, config.products)
@@ -320,7 +323,7 @@ def _enforce_trip_bound_floor(
             return  # Constraints satisfied, we're done
 
         # Need more demand: calculate how much to add
-        target_total = (required_bound - 1) * total_fleet_capacity + 1
+        target_total = max(1, (required_bound - 2) * total_fleet_capacity + 1)
         _increase_station_demands(rng, config, stations, total_demands, total_fleet_capacity, target_total - current_total)
 
     raise ValueError("Cannot make generated station demands compatible with the LP default trip bound.")
