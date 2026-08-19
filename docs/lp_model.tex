@@ -153,7 +153,7 @@ Variable & Domain & Meaning \\
 \(u_{kts}\) & \([0,M]\) & Order of station \(s\) in trip \((k,t)\). \\
 \(m_{kt}\) & \(\{0,1\}\) & 1 if trip \(t\) is the last active trip of vehicle \(k\). \\
 \(r_{ktd}\) & \(\{0,1\}\) & 1 if vehicle \(k\) returns from depot \(d\) after trip \(t\). \\
-\(z_{ktpp'}\) & \(\{0,1\}\) & 1 if vehicle \(k\) changes from product \(p\) to \(p'\) after trip \(t\). \\
+\(z_{ktpp'}\) & \(\{0,1\}\) & 1 if vehicle \(k\) transitions from product \(p\) to \(p'\) after trip \(t\), including \(p=p'\). \\
 \(f_{ktdd'}\) & \(\{0,1\}\) & 1 if vehicle \(k\) transfers from depot \(d\) to depot \(d'\) between trips. \\
 \bottomrule
 \end{tabular}
@@ -181,7 +181,7 @@ The objective minimizes the total operating cost:
     && \text{initial product setup} \nonumber\\
 & + \sum_{k \in K}\sum_{t=1}^{R-1}\sum_{p \in P}\sum_{p' \in P}
     C_{pp'} z_{ktpp'}
-    && \text{inter-trip changeover}.
+    && \text{inter-trip product preparation}.
 \label{eq:objective}
 \end{align}
 

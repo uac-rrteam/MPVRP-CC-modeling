@@ -17,8 +17,8 @@ INSTANCE_FILENAME_RE = re.compile(r"^MPVRP_(?P<instance_id>.+?)_s\d+_d\d+_p\d+\.
 class MPVRPNode:
     id: int
     global_id: int
-    x: float
-    y: float
+    x: int
+    y: int
 
     def distance(self, other: 'MPVRPNode') -> float:
         return math.hypot(self.x - other.x, self.y - other.y)
@@ -30,7 +30,7 @@ class MPVRPNode:
 
 @dataclass(frozen=True)
 class StationNode(MPVRPNode):
-    demand: List[float]
+    demand: List[int]
 
     @property
     def type(self) -> int: return 0
@@ -44,7 +44,7 @@ class GarageNode(MPVRPNode):
 
 @dataclass(frozen=True)
 class DepotNode(MPVRPNode):
-    stocks: List[float]
+    stocks: List[int]
 
     @property
     def type(self) -> int: return 2
@@ -53,7 +53,7 @@ class DepotNode(MPVRPNode):
 @dataclass(frozen=True)
 class Vehicle:
     id: int
-    capacity: float
+    capacity: int
     start_g: Optional[GarageNode]
     init_prod: int
 
@@ -66,12 +66,14 @@ class MPVRPInstance:
         self.n_garages: int = 0
         self.n_stations: int = 0
         self.n_vehicles: int = 0
-        self.changeover_cost: List[List[float]] = []
+        self.changeover_cost: List[List[int]] = []
         self.vehicles: List[Vehicle] = []
         self.stations: List[StationNode] = []
         self.depots: List[DepotNode] = []
         self.garages: List[GarageNode] = []
-        self.dist_matrix: List[List[float]] = []
+        # Integer matrix intended for constraint-programming models. The MILP
+        # still calls MPVRPNode.distance() to use exact Euclidean distances.
+        self.dist_matrix: List[List[int]] = []
         self.source_path: Optional[Path] = None
         self.instance_id: str = "unknown"
 
@@ -95,6 +97,10 @@ class MPVRPInstance:
         def next_token():
             return next(tokens)
 
+        def next_number() -> int:
+            """Parse one strict integer instance value."""
+            return int(next_token())
+
         # Lecture des entêtes
         next_token()  # Skip the first string (uuid prefix/hash)
         inst.uuid = next_token()
@@ -105,13 +111,13 @@ class MPVRPInstance:
         inst.n_vehicles = int(next_token())
 
         # Matrice de changement (changeoverCost)
-        inst.changeover_cost = [[float(next_token()) for _ in range(inst.n_prods)] for _ in range(inst.n_prods)]
+        inst.changeover_cost = [[next_number() for _ in range(inst.n_prods)] for _ in range(inst.n_prods)]
 
         # Flotte de véhicules
         home_garage_ids = []
         for _ in range(inst.n_vehicles):
             v_id = int(next_token())
-            capacity = float(next_token())
+            capacity = next_number()
             home_garage_ids.append(int(next_token()))
             init_prod = int(next_token())
             inst.vehicles.append(Vehicle(v_id, capacity, None, init_prod))
@@ -121,26 +127,26 @@ class MPVRPInstance:
         # Dépôts
         for _ in range(inst.n_depots):
             d_id = int(next_token())
-            x = float(next_token())
-            y = float(next_token())
-            stocks = [float(next_token()) for _ in range(inst.n_prods)]
+            x = next_number()
+            y = next_number()
+            stocks = [next_number() for _ in range(inst.n_prods)]
             inst.depots.append(DepotNode(d_id, current_global_id, x, y, stocks))
             current_global_id += 1
 
         # Garages
         for _ in range(inst.n_garages):
             g_id = int(next_token())
-            x = float(next_token())
-            y = float(next_token())
+            x = next_number()
+            y = next_number()
             inst.garages.append(GarageNode(g_id, current_global_id, x, y))
             current_global_id += 1
 
         # Stations
         for _ in range(inst.n_stations):
             s_id = int(next_token())
-            x = float(next_token())
-            y = float(next_token())
-            demand = [float(next_token()) for _ in range(inst.n_prods)]
+            x = next_number()
+            y = next_number()
+            demand = [next_number() for _ in range(inst.n_prods)]
             inst.stations.append(StationNode(s_id, current_global_id, x, y, demand))
             current_global_id += 1
 
@@ -162,11 +168,11 @@ class MPVRPInstance:
     def _build_distance_matrix(self):
         all_nodes = self.depots + self.garages + self.stations
         size = len(all_nodes)
-        self.dist_matrix = [[0.0 for _ in range(size)] for _ in range(size)]
+        self.dist_matrix = [[0 for _ in range(size)] for _ in range(size)]
 
         for i in range(size):
             for j in range(size):
-                self.dist_matrix[i][j] = all_nodes[i].distance(all_nodes[j])
+                self.dist_matrix[i][j] = int(round(all_nodes[i].distance(all_nodes[j])))
 
     def display(self):
         print(f"UUID: {self.uuid}")
@@ -182,14 +188,14 @@ class MPVRPInstance:
 
         for d in self.depots:
             stocks_str = " ".join(map(str, d.stocks))
-            print(f"ID:{d.id} | X:{d.x:.1f} Y:{d.y:.1f} | Stocks: {stocks_str}")
+            print(f"ID:{d.id} | X:{d.x} Y:{d.y} | Stocks: {stocks_str}")
 
         for g in self.garages:
-            print(f"ID:{g.id} | X:{g.x:.1f} Y:{g.y:.1f}")
+            print(f"ID:{g.id} | X:{g.x} Y:{g.y}")
 
         for s in self.stations:
             demand_str = " ".join(map(str, s.demand))
-            print(f"ID:{s.id} | X:{s.x:.1f} Y:{s.y:.1f} | Requests: {demand_str}")
+            print(f"ID:{s.id} | X:{s.x} Y:{s.y} | Requests: {demand_str}")
 
 
 def _format_number(value: float) -> str:
@@ -301,7 +307,7 @@ def _changeover_metrics(
             next_product = _route_product(route)
             if next_product != current_product:
                 changes += 1
-                cost += instance.changeover_cost[current_product - 1][next_product - 1]
+            cost += instance.changeover_cost[current_product - 1][next_product - 1]
             current_product = next_product
 
     return changes, cost
@@ -329,8 +335,7 @@ def format_solution(
 
         for route in vehicle_routes:
             product = _route_product(route)
-            if product != current_product:
-                cumulative_changeover_cost += instance.changeover_cost[current_product - 1][product - 1]
+            cumulative_changeover_cost += instance.changeover_cost[current_product - 1][product - 1]
             current_product = product
 
             product_label = product - 1

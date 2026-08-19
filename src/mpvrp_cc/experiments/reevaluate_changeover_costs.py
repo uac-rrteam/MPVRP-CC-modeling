@@ -30,6 +30,7 @@ def _reevaluate_product_line(
     line: str,
     instance: MPVRPInstance,
     expected_initial_product: int,
+    trip_start_positions: set[int],
 ) -> tuple[str, int, float]:
     """Replace displayed cumulative costs while preserving the product sequence."""
     prefix, separator, sequence = line.partition(":")
@@ -53,10 +54,11 @@ def _reevaluate_product_line(
     number_of_changes = 0
     previous_product = products[0]
     replacement_costs = [0.0]
-    for product in products[1:]:
-        if product != previous_product:
+    for position, product in enumerate(products[1:], start=1):
+        if position in trip_start_positions:
             cumulative_cost += instance.changeover_cost[previous_product][product]
-            number_of_changes += 1
+            if product != previous_product:
+                number_of_changes += 1
         replacement_costs.append(cumulative_cost)
         previous_product = product
 
@@ -80,6 +82,7 @@ def reevaluate_solution_text(solution_text: str, instance: MPVRPInstance) -> tup
     total_changes = 0
     total_cost = 0.0
     product_line_count = 0
+    previous_visit_line: str | None = None
 
     for index in range(metrics_start):
         line = lines[index]
@@ -88,20 +91,29 @@ def reevaluate_solution_text(solution_text: str, instance: MPVRPInstance) -> tup
             continue
         # Visit lines contain loads in square brackets. Product lines do not.
         if "[" in sequence:
+            previous_visit_line = line
             continue
 
         vehicle_id = int(prefix.strip())
         if vehicle_id not in vehicles:
             raise ValueError(f"Unknown vehicle {vehicle_id} in solution.")
+        if previous_visit_line is None:
+            raise ValueError(f"Missing visit line before product line for vehicle {vehicle_id}.")
+        visit_parts = previous_visit_line.partition(":")[2].split(" - ")
+        trip_start_positions = {
+            position for position, part in enumerate(visit_parts) if "[" in part
+        }
         updated_line, changes, cost = _reevaluate_product_line(
             line,
             instance,
             vehicles[vehicle_id].init_prod - 1,
+            trip_start_positions,
         )
         lines[index] = updated_line
         total_changes += changes
         total_cost += cost
         product_line_count += 1
+        previous_visit_line = None
 
     if product_line_count == 0:
         raise ValueError("No vehicle product line was found in the solution.")

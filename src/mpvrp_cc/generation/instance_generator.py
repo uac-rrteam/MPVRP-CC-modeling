@@ -14,12 +14,13 @@ from mpvrp_cc.generation.validation import validate_generation_config, validate_
 
 LOGGER = logging.getLogger("mpvrp_cc.instance_generator")
 
-# Define realistic cost ranges for product changeover operations
-# These represent how expensive it is to switch between different products
+# Define cost ranges for product changeover operations.  The low level is kept
+# for explicit sensitivity/control instances, but is not sampled by the main
+# benchmark generator.
 CHANGEOVER_COST_RANGES = {
-    "low": (25.0, 150.0),        # Cheap changeovers (minor setup required)
-    "normal": (150.1, 500.0),    # Regular changeovers (standard setup)
-    "high": (500.1, 2500.0),     # Expensive changeovers (major equipment reconfiguration)
+    "low": (25, 150),        # Cheap changeovers (minor setup required)
+    "normal": (1_001, 3_500),    # Regular changeovers (standard setup)
+    "high": (4_501, 15_000),     # Expensive changeovers (major equipment reconfiguration)
 }
 
 # Define vehicle capacity ranges in units
@@ -122,14 +123,15 @@ def generate_instance_data(config: GenerationConfig) -> InstanceData:
 
 
 def _generate_transition_costs(rng: np.random.Generator, config: GenerationConfig) -> np.ndarray:
-    """Generate product changeover costs with a zero self-transition diagonal.
+    """Generate product transition costs with a low-cost diagonal.
 
-    The diagonal is always zero because there's no cost to continue with the same product.
-    If the cost level is 'mixed', each arc gets a random level for heterogeneity.
+    Keeping the same product still requires loading and preparation, represented
+    by a low diagonal cost. If the level is ``mixed``, off-diagonal arcs use
+    normal or high costs.
     """
     if config.products == 1:
-        # Single product: no changeovers needed
-        return np.zeros((1, 1), dtype=float)
+        low, high = CHANGEOVER_COST_RANGES["low"]
+        return rng.integers(low, high + 1, size=(1, 1))
 
     if config.changeover_cost_level == "mixed":
         # Heterogeneous costs: each product pair gets assigned a random difficulty level
@@ -137,31 +139,41 @@ def _generate_transition_costs(rng: np.random.Generator, config: GenerationConfi
 
     # Uniform level: all product pairs use the same cost range
     min_cost, max_cost = _changeover_cost_bounds(config)
-    costs = rng.uniform(min_cost, max_cost, size=(config.products, config.products))
-    np.fill_diagonal(costs, 0.0)  # Diagonal elements stay zero (no changeover from product to itself)
-    return costs.round(1)
+    costs = rng.integers(min_cost, max_cost + 1, size=(config.products, config.products))
+    _fill_low_diagonal(rng, costs)
+    return costs
 
 
 def _generate_mixed_transition_costs(rng: np.random.Generator, products: int) -> np.ndarray:
     """Generate heterogeneous changeover costs by sampling a level per arc.
 
-    For each product pair, randomly decide if the changeover is low-cost, normal, or expensive.
-    This creates realistic scenarios where some product combinations are easier to handle than others.
+    The research benchmark is intended to expose the routing/changeover
+    trade-off, so mixed matrices contain only material (normal or high) costs.
+    Low costs remain available through the explicit ``low`` level for control
+    and sensitivity experiments.
     """
-    costs = np.zeros((products, products), dtype=float)
+    costs = np.zeros((products, products), dtype=int)
+    low_min, low_max = CHANGEOVER_COST_RANGES["low"]
     for from_product in range(products):
         for to_product in range(products):
             if from_product == to_product:
+                costs[from_product, to_product] = int(rng.integers(low_min, low_max + 1))
                 continue
             # Randomly assign each arc a difficulty level
-            level = str(rng.choice(["low", "normal", "high"]))
+            level = str(rng.choice(["normal", "high"]))
             min_cost, max_cost = CHANGEOVER_COST_RANGES[level]
-            costs[from_product, to_product] = float(rng.uniform(min_cost, max_cost))
-    np.fill_diagonal(costs, 0.0)
-    return costs.round(1)
+            costs[from_product, to_product] = int(rng.integers(min_cost, max_cost + 1))
+    return costs
 
 
-def _changeover_cost_bounds(config: GenerationConfig) -> tuple[float, float]:
+def _fill_low_diagonal(rng: np.random.Generator, costs: np.ndarray) -> None:
+    """Fill same-product transitions with low preparation costs."""
+    low, high = CHANGEOVER_COST_RANGES["low"]
+    diagonal = rng.integers(low, high + 1, size=len(costs))
+    costs[np.diag_indices_from(costs)] = diagonal
+
+
+def _changeover_cost_bounds(config: GenerationConfig) -> tuple[int, int]:
     """Return the numeric cost range for the configured changeover level."""
     return CHANGEOVER_COST_RANGES[config.changeover_cost_level]
 
@@ -186,7 +198,7 @@ def _generate_vehicles(rng: np.random.Generator, config: GenerationConfig) -> np
                 int(rng.integers(1, config.products + 1)), # Starting product loaded
             ]
         )
-    return np.array(rows, dtype=float)
+    return np.array(rows, dtype=int)
 
 
 def _capacity_bounds(rng: np.random.Generator, level: str) -> tuple[int, int]:
@@ -204,7 +216,7 @@ def _generate_stations(
     rng: np.random.Generator,
     config: GenerationConfig,
     vehicle_capacities: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray, list[tuple[float, float]]]:
+) -> tuple[np.ndarray, np.ndarray, list[tuple[int, int]]]:
     """Generate station locations and product demands that fit LP bounds.
 
     This function creates service locations with customer demands for each product.
@@ -215,10 +227,10 @@ def _generate_stations(
     - Stations are placed using the configured spatial strategy
     """
     total_fleet_capacity = int(vehicle_capacities.sum())
-    points: list[tuple[float, float]] = []
+    points: list[tuple[int, int]] = []
     centers = _station_centers(rng, config)  # Get cluster centers if using clustered layout
-    rows: list[list[float]] = []
-    total_demands = np.zeros(config.products, dtype=float)  # Track total demand per product
+    rows: list[list[int]] = []
+    total_demands = np.zeros(config.products, dtype=int)  # Track total demand per product
 
     # Generate each station
     for station_id in range(1, config.stations + 1):
@@ -243,7 +255,7 @@ def _generate_stations(
         rows.append([station_id, x, y, *demands.tolist()])
         total_demands += demands
 
-    station_array = np.array(rows, dtype=float)
+    station_array = np.array(rows, dtype=int)
 
     # Ensure every product has at least some demand (avoid zero-demand products)
     for product_idx in range(config.products):
@@ -330,7 +342,7 @@ def _increase_station_demands(
     if remaining <= 0:
         return
 
-    max_cell_demand = float(total_fleet_capacity)
+    max_cell_demand = total_fleet_capacity
 
     # Find all stations and products that can still accept more demand
     candidates = [
@@ -422,7 +434,7 @@ def _generate_depots(
     rng: np.random.Generator,
     config: GenerationConfig,
     total_demands: np.ndarray,
-    points: list[tuple[float, float]],
+    points: list[tuple[int, int]],
 ) -> np.ndarray:
     """Generate depot locations and stock totals covering all product demand.
 
@@ -433,7 +445,7 @@ def _generate_depots(
     # Calculate target stock levels with safety margin
     surplus_ratio = _stock_surplus_ratio(rng, config.stock_level)
     target_stocks = np.ceil(total_demands * (1.0 + surplus_ratio)).astype(int)
-    rows: list[list[float]] = []
+    rows: list[list[int]] = []
 
     for depot_id in range(1, config.depots + 1):
         x, y = _depot_point(rng, config, points, depot_id)
@@ -454,7 +466,7 @@ def _generate_depots(
             stocks.append(stock)
         rows.append([depot_id, x, y, *stocks])
 
-    return np.array(rows, dtype=float)
+    return np.array(rows, dtype=int)
 
 
 def _stock_surplus_ratio(rng: np.random.Generator, level: str) -> float:
@@ -473,7 +485,7 @@ def _stock_surplus_ratio(rng: np.random.Generator, level: str) -> float:
 def _generate_garages(
     rng: np.random.Generator,
     config: GenerationConfig,
-    points: list[tuple[float, float]],
+    points: list[tuple[int, int]],
     depots: np.ndarray,
 ) -> np.ndarray:
     """Generate garage locations near depots for clustered layouts.
@@ -486,10 +498,10 @@ def _generate_garages(
     for garage_id in range(1, config.garages + 1):
         x, y = _garage_point(rng, config, points, garage_id, depots)
         rows.append([garage_id, x, y])
-    return np.array(rows, dtype=float)
+    return np.array(rows, dtype=int)
 
 
-def _station_centers(rng: np.random.Generator, config: GenerationConfig) -> list[tuple[float, float]]:
+def _station_centers(rng: np.random.Generator, config: GenerationConfig) -> list[tuple[int, int]]:
     """Return cluster centers used for non-uniform station layouts.
 
     For clustered and corridor strategies, we define center points around which
@@ -501,15 +513,18 @@ def _station_centers(rng: np.random.Generator, config: GenerationConfig) -> list
 
     if config.coordinate_strategy == "corridor":
         # Two clusters forming a corridor/line pattern
-        return [(0.2 * config.grid_size, 0.35 * config.grid_size), (0.8 * config.grid_size, 0.65 * config.grid_size)]
+        return [
+            (round(0.2 * config.grid_size), round(0.35 * config.grid_size)),
+            (round(0.8 * config.grid_size), round(0.65 * config.grid_size)),
+        ]
 
     # Clustered strategy: 2-4 clusters depending on station density
     center_count = min(4, max(2, int(np.sqrt(config.stations))))
     margin = 0.18 * config.grid_size  # Keep clusters away from boundaries
     return [
         (
-            float(rng.uniform(margin, config.grid_size - margin)),
-            float(rng.uniform(margin, config.grid_size - margin)),
+            int(round(rng.uniform(margin, config.grid_size - margin))),
+            int(round(rng.uniform(margin, config.grid_size - margin))),
         )
         for _ in range(center_count)
     ]
@@ -518,10 +533,10 @@ def _station_centers(rng: np.random.Generator, config: GenerationConfig) -> list
 def _station_point(
     rng: np.random.Generator,
     config: GenerationConfig,
-    points: list[tuple[float, float]],
-    centers: list[tuple[float, float]],
+    points: list[tuple[int, int]],
+    centers: list[tuple[int, int]],
     station_id: int,
-) -> tuple[float, float]:
+) -> tuple[int, int]:
     """Generate one station coordinate according to the spatial strategy.
 
     Strategies:
@@ -550,9 +565,9 @@ def _station_point(
 def _depot_point(
     rng: np.random.Generator,
     config: GenerationConfig,
-    points: list[tuple[float, float]],
+    points: list[tuple[int, int]],
     depot_id: int,
-) -> tuple[float, float]:
+) -> tuple[int, int]:
     """Generate one depot coordinate according to the spatial strategy.
 
     Depots are typically placed in corners or edges for realistic logistics scenarios.
@@ -575,10 +590,10 @@ def _depot_point(
 def _garage_point(
     rng: np.random.Generator,
     config: GenerationConfig,
-    points: list[tuple[float, float]],
+    points: list[tuple[int, int]],
     garage_id: int,
     depots: np.ndarray,
-) -> tuple[float, float]:
+) -> tuple[int, int]:
     """Generate one garage coordinate, usually close to a depot.
 
     Garages are placed near depots to minimize travel time for vehicle positioning.
@@ -588,10 +603,14 @@ def _garage_point(
 
     # Assign garage to a nearby depot, cycling through depots if there are more garages
     depot = depots[(garage_id - 1) % len(depots)]
-    return _unique_point_near(rng, config, points, float(depot[1]), float(depot[2]), 0.07 * config.grid_size)
+    return _unique_point_near(rng, config, points, int(depot[1]), int(depot[2]), 0.07 * config.grid_size)
 
 
-def _unique_point(rng: np.random.Generator, config: GenerationConfig, points: list[tuple[float, float]]) -> tuple[float, float]:
+def _unique_point(
+    rng: np.random.Generator,
+    config: GenerationConfig,
+    points: list[tuple[int, int]],
+) -> tuple[int, int]:
     """Draw a point that respects the configured minimum distance when possible.
 
     Attempts up to 1000 times to find a point that's far enough from existing points.
@@ -599,8 +618,8 @@ def _unique_point(rng: np.random.Generator, config: GenerationConfig, points: li
     This prevents overcrowding of locations while ensuring coverage across the grid.
     """
     for _ in range(1_000):
-        x = round(float(rng.uniform(0, config.grid_size)), 1)
-        y = round(float(rng.uniform(0, config.grid_size)), 1)
+        x = int(rng.integers(0, config.grid_size + 1))
+        y = int(rng.integers(0, config.grid_size + 1))
         if _is_far_enough(x, y, points, config.min_point_distance):
             points.append((x, y))
             return x, y
@@ -611,11 +630,11 @@ def _unique_point(rng: np.random.Generator, config: GenerationConfig, points: li
 def _unique_point_near(
     rng: np.random.Generator,
     config: GenerationConfig,
-    points: list[tuple[float, float]],
+    points: list[tuple[int, int]],
     center_x: float,
     center_y: float,
     spread: float,
-) -> tuple[float, float]:
+) -> tuple[int, int]:
     """Draw a unique point near a center, falling back to uniform sampling.
 
     Uses normal distribution centered at (center_x, center_y) with given spread.
@@ -624,8 +643,8 @@ def _unique_point_near(
     """
     for _ in range(1_000):
         # Sample from normal distribution and clip to grid bounds
-        x = round(float(np.clip(rng.normal(center_x, spread), 0, config.grid_size)), 1)
-        y = round(float(np.clip(rng.normal(center_y, spread), 0, config.grid_size)), 1)
+        x = int(round(np.clip(rng.normal(center_x, spread), 0, config.grid_size)))
+        y = int(round(np.clip(rng.normal(center_y, spread), 0, config.grid_size)))
         if _is_far_enough(x, y, points, config.min_point_distance):
             points.append((x, y))
             return x, y
@@ -633,7 +652,7 @@ def _unique_point_near(
     return _unique_point(rng, config, points)
 
 
-def _is_far_enough(x: float, y: float, points: list[tuple[float, float]], minimum_distance: float) -> bool:
+def _is_far_enough(x: int, y: int, points: list[tuple[int, int]], minimum_distance: int) -> bool:
     """Check whether a candidate point is separated from existing points.
 
     Uses Euclidean distance to ensure minimum spacing between locations.
@@ -641,13 +660,18 @@ def _is_far_enough(x: float, y: float, points: list[tuple[float, float]], minimu
     return all(np.hypot(x - px, y - py) >= minimum_distance for px, py in points)
 
 
-def _append_clipped_point(points: list[tuple[float, float]], x: float, y: float, grid_size: float) -> tuple[float, float]:
+def _append_clipped_point(
+    points: list[tuple[int, int]],
+    x: int,
+    y: int,
+    grid_size: int,
+) -> tuple[int, int]:
     """Append a final clipped point after coordinate retries are exhausted.
 
     When we've tried many times and still can't find a unique point, we give up and
     place it at the clipped boundary. This ensures we can always generate locations.
     """
-    point = (round(float(np.clip(x, 0, grid_size)), 1), round(float(np.clip(y, 0, grid_size)), 1))
+    point = (int(np.clip(x, 0, grid_size)), int(np.clip(y, 0, grid_size)))
     points.append(point)
     return point
 
@@ -712,7 +736,7 @@ def generate_instance(
     garage_count: int | None = None,
     station_count: int | None = None,
     product_count: int | None = None,
-    max_coord: float = 100.0,
+    max_coord: int = 100,
     changeover_cost_level: str = "normal",
     capacity_level: str = "medium",
     demand_level: str = "medium",
@@ -798,7 +822,7 @@ def parse_args() -> argparse.Namespace:
 
     # Parameter levels: control difficulty and diversity of generated instances
     ranges = parser.add_argument_group("generation levels")
-    ranges.add_argument("--grid", type=float, default=100.0, help="Coordinate grid size.")
+    ranges.add_argument("--grid", type=int, default=100, help="Integer coordinate grid size.")
     ranges.add_argument(
         "--changeover-cost-level",
         choices=("low", "normal", "high", "mixed"),

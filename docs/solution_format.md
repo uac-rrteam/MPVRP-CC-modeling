@@ -36,7 +36,9 @@ Node IDs refer to their 1-based index in the instance file (e.g., loaded at Depo
 ID: Prod(Cost) - Prod(Cost) - ...
 ```
 
-This line indicates which product is transported at each step and the cumulative changeover cost.
+This line indicates which product is transported at each step and the
+cumulative transition cost. A cost is added at the start of every trip,
+including a low preparation cost when the product remains unchanged.
 
 > **Important:** The two lines must be perfectly aligned in terms of the number of steps. Each element in the visit sequence corresponds to exactly one element in the product sequence.
 
@@ -46,16 +48,16 @@ This line indicates which product is transported at each step and the cumulative
 
 ```
 1: 1 - 1 [1344] - 2 (1344) - 1
-1: 0(0.0) - 0(0.0) - 0(0.0)
+1: 0(0.0) - 0(42.0) - 0(42.0)
 
 2: 1 - 1 [8947] - 1 (4278) - 2 (2350) - 3 (2319) - 1
-2: 1(0.0) - 1(0.0) - 1(0.0) - 1(0.0) - 1(0.0)
+2: 1(0.0) - 1(87.0) - 1(87.0) - 1(87.0) - 1(87.0)
 ```
 
 In this example:
 
-- **Vehicle 1** starts at garage 1, loads 1344 units at depot 1, delivers 1344 units to station 2, and returns to garage 1. It carries product 0 (cost 0.0).
-- **Vehicle 2** starts at garage 1, loads 8947 units at depot 1, delivers to stations 1, 2, and 3, and returns to garage 1. It carries product 1 (cost 0.0).
+- **Vehicle 1** starts at garage 1, loads 1344 units at depot 1, delivers 1344 units to station 2, and returns to garage 1. It carries product 0 and pays a same-product preparation cost of 42.
+- **Vehicle 2** starts at garage 1, loads 8947 units at depot 1, delivers to stations 1, 2, and 3, and returns to garage 1. It carries product 1 and pays a same-product preparation cost of 87.
 
 ---
 
@@ -65,8 +67,8 @@ After all vehicle routes, the file ends with **6 lines** of performance metrics,
 
 ```
 2
-7
-55.66
+0
+129.00
 1385.07
 Intel Core i7-10700K
 0.245
@@ -76,10 +78,12 @@ Intel Core i7-10700K
 The count of vehicles with at least one delivery (e.g., `2`).
 
 ### 4.2 Line 2 — Number of Product Changes
-The total number of product changes across the entire solution (e.g., `7`).
+The total number of genuine product changes across the entire solution. A
+same-product preparation contributes to cost but not to this count.
 
 ### 4.3 Line 3 — Total Transition Cost
-The sum of all product changeover costs for all vehicles (e.g., `55.66`).
+The sum of all initial and inter-trip transition costs for all vehicles,
+including same-product preparation costs (e.g., `129.00`).
 
 ### 4.4 Line 4 — Total Distance
 The total distance traveled by the fleet, expressed as the sum of Euclidean distances (e.g., `1385.07`).
@@ -100,5 +104,5 @@ A route produced from a zero-changeover instance can be evaluated afterward
 against the paired original matrix. The `mpvrp-reevaluate-changeovers` command
 preserves the route, products, loads, deliveries, distance, processor, and solve
 time. It changes only the cumulative values shown on product lines and the final
-number and total cost of product changes. By default, the source file is never
+number of genuine changes and total transition cost. By default, the source file is never
 overwritten; a repriced copy is created in a dedicated subdirectory.

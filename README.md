@@ -2,7 +2,7 @@
 
 Python tools for generating, validating, and solving the **Multi-Product Vehicle Routing Problem with Split Deliveries and Changeover Costs**.
 
-The project studies how product-transition costs influence route planning for a heterogeneous fleet serving multiple products, depots, and customers. Changeover costs represent the operational preparation required when a vehicle switches products, including cleaning, handling, reconfiguration, labor, controls, and downtime.
+The project studies how product-transition costs influence route planning for a heterogeneous fleet serving multiple products, depots, and customers. Off-diagonal costs represent product changes; positive low-cost diagonal entries represent preparation and loading when a vehicle retains the same product.
 
 ## Project layout
 
@@ -17,8 +17,8 @@ The project studies how product-transition costs influence route planning for a 
 │   └── paths.py             # Central project paths
 ├── data/
 │   ├── instances/
-│   │   ├── with_changeover_costs/     # 150 original instances
-│   │   ├── without_changeover_costs/  # 150 paired zero-cost instances
+│   │   ├── with_changeover_costs/     # Generated benchmark instances
+│   │   ├── without_changeover_costs/  # Paired zero-cost instances
 │   │   └── generated/                 # Ad hoc generated instances
 │   └── solutions/
 │       ├── with_changeover_costs/
@@ -45,6 +45,21 @@ Generate one instance:
 ```bash
 mpvrp-generate -v 5 -d 2 -g 2 -s 12 -p 3 --id S_001
 ```
+
+Generate the main experimental benchmark:
+
+```bash
+mpvrp-generate-benchmark --count 150
+```
+
+The main benchmark always contains at least two products and samples `normal`,
+`high`, and `mixed` changeover regimes. Mixed matrices contain normal and high
+off-diagonal arcs, while every diagonal uses the `low` range. The
+single-instance generator still exposes the `low` level and
+accepts one product for separate control or sensitivity experiments. All
+numeric values stored in newly generated instance files are integers. The
+parser also exposes an integer distance matrix, rounded to the nearest unit for
+constraint programming; the MILP continues to use exact Euclidean distances.
 
 Validate an instance:
 

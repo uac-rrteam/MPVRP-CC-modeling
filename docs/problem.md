@@ -41,7 +41,10 @@ A vehicle carries only one product during a trip. It may nevertheless carry diff
 
 ## 4. Changeover costs
 
-A **changeover** occurs when the product assigned to a vehicle for its next trip differs from its current product configuration. The changeover cost is an aggregate operational cost, not merely a tank-cleaning cost.
+A **product transition** occurs before each active trip. A transition between
+different products is a changeover; retaining the same product still incurs a
+smaller preparation and loading cost. The transition cost is an aggregate
+operational cost, not merely a tank-cleaning cost.
 
 Depending on the application, it may represent:
 
@@ -53,9 +56,11 @@ Depending on the application, it may represent:
 - setup delays, vehicle downtime, and the associated loss of availability;
 - administrative or coordination activities required before the next trip.
 
-These costs are represented by a directed product-to-product matrix. A transition from product `p` to product `q` may have a different cost from the reverse transition. The diagonal is zero because continuing with the same product does not trigger an additional changeover in the current model.
+These costs are represented by a directed product-to-product matrix. A transition from product `p` to product `q` may have a different cost from the reverse transition. Diagonal entries are positive and sampled from the `low` range to represent preparation when the same product is retained. Off-diagonal entries use the selected normal, high, or mixed regime.
 
-The initial configuration of each vehicle is also considered: if its first trip uses another product, the corresponding initial changeover cost is incurred.
+The initial configuration of each vehicle is also considered. Its first active
+trip incurs the corresponding matrix cost whether it retains or changes the
+initial product.
 
 ## 5. Split deliveries
 
