@@ -60,8 +60,14 @@ numeric values stored in newly generated instance files are integers. The
 parser also exposes an integer distance matrix, rounded to the nearest unit for
 constraint programming; the MILP continues to use exact Euclidean distances.
 
+The inclusive integer ranges are `25–150` for `low`, `1001–3500` for
+`normal`, and `4501–15000` for `high`. In the main benchmark, `low` is used
+only on the diagonal; `normal`, `high`, or both are used off the diagonal.
+
 The current benchmark contains 100 paired instances. Its transition-cost
 regimes are balanced as follows: 34 `normal`, 33 `high`, and 33 `mixed`.
+The product-count distribution is 22 instances with 2 products, 30 with 3,
+12 with 4, 22 with 5, and 14 with 6.
 
 Validate an instance:
 

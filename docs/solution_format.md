@@ -1,73 +1,72 @@
-# Solution Format Specification — MPVRP-CC
+# Solution File Format
 
-*MPVRP-CC Team — January 25, 2026*
+## 1. Naming the files
 
-> **Note:** This document details the file format used for MPVRP-CC solutions. To be validated, a solution must strictly follow the structure described below.
+Solutions are plain-text files with the `.dat` extension. For the instance:
 
----
-
-## 1. File Format
-
-Solutions are stored in text files with the `.dat` extension. The filename must reference the instance being solved (e.g., `Sol_MPVRP_...`).
-
----
-
-## 2. File Structure
-
-The file describes the routes vehicle by vehicle. For each vehicle used, the solution contains a block of **2 lines**, separated by an empty line.
-
-### 2.1 Line 1: Visit Sequence
-
-```
-ID: Garage - Depot [Load] - Station (Deliver) - ... - Garage
+```text
+MPVRP_001_s36_d8_p3.dat
 ```
 
-This line starts with the vehicle ID and describes the path:
+the preferred solution name is:
 
-- **Garage**: Start and end point (Node ID only).
-- **Depot**: Identified by square brackets `[Qty]` indicating quantity loaded.
-- **Station**: Identified by parentheses `(Qty)` indicating quantity delivered.
-
-Node IDs refer to their 1-based index in the instance file (e.g., loaded at Depot 1, delivered to Station 2) and are not cumulative across types.
-
-### 2.2 Line 2: Product Sequence and Costs
-
-```
-ID: Prod(Cost) - Prod(Cost) - ...
+```text
+Sol_001_s36_d8_p3.dat
 ```
 
-This line indicates which product is transported at each step and the
-cumulative transition cost. A cost is added at the start of every trip,
-including a low preparation cost when the product remains unchanged.
+This is the canonical name generated and recognized by the repository tools. A submission archive may organize files in folders and may contain any subset of the instances from `001` to `100`. The platform identifies every recognized solution and evaluates it independently.
 
-> **Important:** Product entries align with the initial garage, each loading
-> depot, and each delivered station. The terminal garage appears only on the
-> visit line because no product transition occurs after the last trip.
+Submitting all 100 solutions at once is not required. For the final score, an absent solution, an unresolved solution, and an invalid solution are treated in the same way: the corresponding instance receives a penalty of `100000`.
 
----
+## 2. Describing a vehicle schedule
 
-## 3. Valid Solution Example
+Every used vehicle is represented by two matching lines. Leave an empty line before the next vehicle.
 
+### Route line
+
+```text
+ID: Garage - Depot [Load] - Station (Delivery) - ... - Garage
 ```
+
+This line follows the vehicle from departure to return:
+
+- a **garage** is written with its identifier;
+- a **depot** is followed by the quantity loaded in square brackets;
+- a **station** is followed by the quantity delivered in parentheses.
+
+Identifiers are local to their category. Depot 1, garage 1, and station 1 are therefore three different locations.
+
+### Product and cost line
+
+```text
+ID: Product(CumulativeCost) - Product(CumulativeCost) - ...
+```
+
+This second line gives the vehicle's product configuration and cumulative transition cost at every step of the route. Product identifiers start at `0` in solution files and range from `0` to `NbProducts - 1`.
+
+The cumulative cost annotation is part of the canonical repository format. Every product must be followed by the cumulative transition cost at that point, as in `0(42.00)`. The re-evaluation command uses these annotated entries when it rewrites a zero-cost solution with the cost-bearing matrix.
+
+The first value is the vehicle's initial product configuration. At every depot, the next value is the product being loaded. This is also where a preparation and loading-related transition cost is added. The amount comes from the directed matrix using the previous configuration and the newly loaded product. It therefore applies before the first delivery trip as well as between later trips. Loading the same product again incurs the positive low cost on the matrix diagonal.
+
+The route line contains the terminal return garage, while the product line omits that final garage entry. The last product configuration and cumulative cost are implicitly carried through to the return garage. Consequently, the product line has exactly one fewer element than the route line.
+
+## 3. Example
+
+```text
 1: 1 - 1 [1344] - 2 (1344) - 1
-1: 0(0.0) - 0(42.0) - 0(42.0)
+1: 0(0.00) - 0(42.00) - 0(42.00)
 
 2: 1 - 1 [8947] - 1 (4278) - 2 (2350) - 3 (2319) - 1
-2: 1(0.0) - 1(87.0) - 1(87.0) - 1(87.0) - 1(87.0)
+2: 1(0.00) - 1(87.00) - 1(87.00) - 1(87.00) - 1(87.00)
 ```
 
-In this example:
+Here, vehicle 1 leaves garage 1, loads 1344 units of product 0 at depot 1, delivers them to station 2, and returns home. Vehicle 2 loads 8947 units of product 1, serves stations 1, 2, and 3, then returns to garage 1. Neither vehicle genuinely changes product, but their initial loading operations incur diagonal costs of `42` and `87`, for a total transition cost of `129`.
 
-- **Vehicle 1** starts at garage 1, loads 1344 units at depot 1, delivers 1344 units to station 2, and returns to garage 1. It carries product 0 and pays a same-product preparation cost of 42.
-- **Vehicle 2** starts at garage 1, loads 8947 units at depot 1, delivers to stations 1, 2, and 3, and returns to garage 1. It carries product 1 and pays a same-product preparation cost of 87.
+## 4. Summary metrics
 
----
+After the last vehicle block, the canonical file ends with six summary lines:
 
-## 4. Solution Metrics
-
-After all vehicle routes, the file ends with **6 lines** of performance metrics, in the following order:
-
-```
+```text
 2
 0
 129.00
@@ -76,35 +75,27 @@ Intel Core i7-10700K
 0.245
 ```
 
-### 4.1 Line 1 — Number of Vehicles Used
-The count of vehicles with at least one delivery (e.g., `2`).
+They contain, in this order:
 
-### 4.2 Line 2 — Number of Product Changes
-The total number of genuine product changes across the entire solution. A
-same-product preparation contributes to cost but not to this count.
+1. **Vehicles used** — the number of vehicles that perform at least one delivery.
+2. **Product transitions** — the number of genuine product changes, excluding same-product loading operations.
+3. **Total transition cost** — the sum of all preparation and loading-related transition costs.
+4. **Total distance** — the Euclidean distance traveled by the complete fleet.
+5. **Processor** — the processor used to produce the solution.
+6. **Resolution time** — the computation time in seconds.
 
-### 4.3 Line 3 — Total Transition Cost
-The sum of all initial and inter-trip transition costs for all vehicles,
-including same-product preparation costs (e.g., `129.00`).
+All six lines are required by the repository's solution reader and re-evaluation tools. The transition count records only changes between different products, whereas the total transition cost includes every charged loading operation, including a same-product diagonal cost.
 
-### 4.4 Line 4 — Total Distance
-The total distance traveled by the fleet, expressed as the sum of Euclidean distances (e.g., `1385.07`).
+## 5. Feasibility requirements
 
-### 4.5 Line 5 — Processor
-The model of the processor on which the solution was generated (e.g., `Intel Core i7-10700K`).
+A valid solution must respect all of the following conditions:
 
-### 4.6 Line 6 — Resolution Time
-The time elapsed to generate the solution, in seconds (e.g., `0.245`).
-
----
-
-> A valid solution must satisfy all the constraints.
-
-## 5. Ex-post changeover evaluation
-
-A route produced from a zero-changeover instance can be evaluated afterward
-against the paired original matrix. The `mpvrp-reevaluate-changeovers` command
-preserves the route, products, loads, deliveries, distance, processor, and solve
-time. It changes only the cumulative values shown on product lines and the final
-number of genuine changes and total transition cost. By default, the source file is never
-overwritten; a repriced copy is created in a dedicated subdirectory.
+- each vehicle appears at most once;
+- every route starts and ends at that vehicle's home garage;
+- each trip begins with a positive depot load and includes at least one delivery;
+- a vehicle carries one product throughout a trip, with a new product selected only when loading at a depot;
+- the quantity loaded for a trip equals the quantity delivered and does not exceed vehicle capacity;
+- depot stocks remain non-negative;
+- every station-product demand is met exactly;
+- one vehicle serves a given station-product pair at most once across all its trips; it may revisit the same station only to deliver another product;
+- the route itself respects all structural and operational constraints; cumulative costs and final metrics are recalculated by the platform.
