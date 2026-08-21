@@ -1,0 +1,146 @@
+INTERPRETATION OF THE ARTICLE FIGURES
+=====================================
+
+Scope and reading precautions
+-----------------------------
+The figures compare two formulations of the same benchmark instances: a
+changeover-aware model, which includes product-change costs during optimization,
+and a model that ignores those costs. For a fair economic comparison, the
+solution obtained by the latter is evaluated ex post with its actual changeover
+cost added. Throughout the figures, operational cost therefore means travelled
+distance plus changeover cost.
+
+The paired analyses contain 79 of the 100 benchmark instances. The other 21 are
+excluded because at least one formulation did not return a usable solution.
+Moreover, only 5 paired instances were proven optimal under both formulations;
+most plotted solutions are incumbents obtained at the time limit. Consequently,
+the figures provide strong descriptive evidence about the solutions found under
+the computational budget, but they do not generally prove that one formulation's
+true optimum is better than the other's. The exclusion of unsolved instances may
+also make the paired results more representative of the tractable subset than of
+the complete benchmark.
+
+
+Figure 1 - Paired comparison of operational cost
+------------------------------------------------
+Each point represents one instance. Its horizontal coordinate is the total cost
+of the solution found while ignoring changeover costs, after adding those costs
+ex post; its vertical coordinate is the total cost of the changeover-aware
+solution. Both axes are logarithmic, so positions reflect relative rather than
+absolute differences over the wide range of instance costs. A point below the
+dashed equal-cost line favours the changeover-aware solution; a point above the
+line favours the solution obtained without explicit changeover costs.
+
+Most points are below the diagonal: the changeover-aware incumbent is cheaper in
+56 of 79 pairs, equal in 3, and more expensive in 20. The median net saving is
+28.22%. Thus, explicitly accounting for changeovers usually produces a materially
+lower evaluated operational cost, although the result is not universal and a few
+instances show large losses. The points near the upper-right diagonal indicate
+that, for some expensive instances, both approaches find solutions with similar
+total costs. The colour pattern also suggests that the advantage is more common
+and larger for instances with two to four products, whereas five- and six-product
+instances are more frequently close to, or above, the equal-cost line.
+
+For the five pairs in which both runs were proven optimal, all five favour the
+changeover-aware formulation; their median saving is 37.67%. This is a small
+subset, so it supports the economic mechanism without being sufficient for a
+broad optimality claim.
+
+
+Figure 2 - Distance-changeover trade-off
+----------------------------------------
+The horizontal axis measures the extra distance travelled by the changeover-aware
+solution relative to the solution found while ignoring changeovers. Positive
+values mean extra distance; negative values mean that the aware solution is also
+shorter. The vertical axis measures the changeover-cost saving achieved by the
+aware solution. Positive values mean lower changeover cost. Since net saving is
+changeover-cost saving minus additional distance, the dashed y = x line is the
+economic break-even boundary: points above it favour the changeover-aware
+solution, and points below it do not.
+
+The points form an almost vertical cloud around zero additional distance, while
+changeover-cost differences span a much larger range. The median distance
+increase is only 61.77 cost units, compared with a median changeover-cost saving
+of 11,583 units. In 49 pairs the aware solution travels farther, in 25 it travels
+less far, and in 5 the reported distance is unchanged. Nevertheless, 56 pairs lie
+on the beneficial side of break-even. This indicates that the principal economic
+effect comes from reorganizing routes to avoid expensive product transitions,
+usually at a comparatively small distance penalty. Some points have negative
+changeover savings: for those time-limited runs, the aware incumbent actually has
+higher reported changeover cost, showing that explicit modelling does not ensure
+a better incumbent within the available solve time.
+
+
+Figure 3 - Effect by number of products
+---------------------------------------
+The left panel groups percentage net cost savings by product count. Values above
+zero favour explicit changeover modelling; values below zero favour the ignored-
+cost solution. The right panel similarly reports the reduction in the number of
+product changes. The boxes summarize each group, while the overlaid dots retain
+the individual observations and reveal the substantial within-group variation.
+
+For two, three, and four products, median cost savings are respectively 42.48%,
+41.67%, and 42.98%. Their median reductions in product changes are 2.5, 3, and 6.
+The median benefit drops sharply at five products: the median saving is only
+1.72% and the median reduction in changes is zero. With six products, the median
+saving is -1.24%, while the median reduction is one change. Thus the results do
+not show a monotonic increase in benefit as the number of products grows. Instead,
+the strongest observed economic and operational effects occur for two to four
+products, followed by a marked weakening for five and six products.
+
+This pattern should be interpreted cautiously because group sizes are unequal
+(20, 25, 11, 17, and 6 instances for two through six products), especially for
+six products, and other instance characteristics are not controlled. The figure
+therefore shows an association with product count, not a causal product-count
+effect. The wide boxes and extreme dots also show strong instance dependence:
+even in groups with a positive median, some aware incumbents are worse, and a few
+instances obtain very large benefits.
+
+
+Figure 4 - Solver outcomes under the time limit
+-----------------------------------------------
+The stacked bars summarize all 100 benchmark instances. The changeover-aware
+model proves 7 instances optimal, returns a feasible time-limit incumbent for 75,
+and leaves 18 unsolved. The formulation that ignores changeover costs proves 6
+optimal, returns 76 time-limit incumbents, and also leaves 18 unsolved.
+
+The nearly identical bars show no meaningful aggregate difference in the ability
+of the two formulations to produce a usable solution under the time limit. They
+also show that exact certification is rare: more than three quarters of all
+instances terminate with an incumbent rather than a proof of optimality. This is
+why differences in Figures 1-3 should primarily be described as differences in
+incumbent quality under a fixed computational budget.
+
+
+Figure 5 - Computational effort and instance size
+-------------------------------------------------
+Runtime is plotted against the number of stations on a logarithmic vertical
+scale. Circles denote proven-optimal runs and crosses denote runs stopped at the
+time limit. The left and right panels correspond to the aware and ignored-cost
+formulations. Only the 79 complete paired instances appear here, so unsolved runs
+are absent.
+
+In both panels, almost all observations are crosses concentrated at the common
+time-limit ceiling. Proven-optimal solutions occur mainly among small instances,
+with only a few larger exceptions. This is evidence that the benchmark is
+computationally demanding and that exact solution becomes uncommon as station
+count grows. However, the large amount of right-censoring prevents a meaningful
+runtime-growth curve from being read from the plot: a point at the ceiling says
+only that the run used the allotted time, not how much longer it would have needed
+to prove optimality. The two panels again look very similar, so there is no clear
+evidence here that explicitly including changeover costs materially changes
+runtime or scalability relative to the ignored-cost formulation.
+
+
+Overall conclusion
+------------------
+Under the tested time limit, explicit modelling of changeover costs usually
+improves the evaluated operational cost of the returned solution. The improvement
+is driven chiefly by savings in product-change costs and reductions in product
+changes, with comparatively small changes in route distance. The observed benefit
+is strongest for instances with two to four products and much weaker for five or
+six. Computationally, both formulations behave similarly: they solve roughly the
+same number of instances, but most runs reach the time limit without proving
+optimality. The appropriate conclusion is therefore that changeover awareness
+improves incumbent quality on most solved benchmark pairs, not that it has been
+shown to improve the optimum on the full benchmark set.
