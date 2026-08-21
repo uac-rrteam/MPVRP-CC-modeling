@@ -10,11 +10,11 @@ cd -- "$PROJECT_ROOT"
 echo "Solving the benchmark with changeover costs..."
 uv run mpvrp-solve-benchmark \
     --scenario with_changeover_costs \
-    --time-limit 190
+    --time-limit 250
 
 echo "Solving the benchmark without changeover costs..."
 uv run mpvrp-solve-benchmark \
     --scenario without_changeover_costs \
-    --time-limit 190
+    --time-limit 250
 
 echo "Both benchmark scenarios have been completed."

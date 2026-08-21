@@ -15,7 +15,9 @@ from mpvrp_cc.paths import WITH_CHANGEOVER_INSTANCES_DIR
 LOGGER = logging.getLogger("mpvrp_cc.generate_benchmark")
 MAX_GENERATION_ATTEMPTS = 50
 
-CHANGEOVER_LEVELS = ("low", "normal", "high", "mixed")
+# Low changeover costs are reserved for separate sensitivity experiments.  The
+# main benchmark samples only regimes where changeovers can affect routing.
+CHANGEOVER_LEVELS = ("normal", "high", "mixed")
 CAPACITY_LEVELS = ("low", "medium", "large", "mixed")
 DEMAND_LEVELS = ("low", "medium", "high", "mixed")
 STOCK_LEVELS = ("low", "medium", "high", "mixed")
@@ -23,16 +25,30 @@ COORDINATE_STRATEGIES = ("clustered", "corridor", "uniform")
 
 
 def _level_combinations(rng: np.random.Generator, count: int) -> list[tuple[str, str, str, str]]:
-    """Return shuffled generation-level combinations, cycling if needed."""
-    combinations = list(itertools.product(CHANGEOVER_LEVELS, CAPACITY_LEVELS, DEMAND_LEVELS, STOCK_LEVELS))
-    rng.shuffle(combinations)
-    if count <= len(combinations):
-        return combinations[:count]
+    """Return combinations stratified by material changeover-cost level.
 
-    selected = combinations[:]
-    while len(selected) < count:
-        rng.shuffle(combinations)
-        selected.extend(combinations[: count - len(selected)])
+    Changeover levels differ by at most one occurrence for any requested
+    dataset size.  The other generation dimensions remain shuffled and cycle
+    independently within each changeover stratum when necessary.
+    """
+    other_levels = list(itertools.product(CAPACITY_LEVELS, DEMAND_LEVELS, STOCK_LEVELS))
+    pools = {level: other_levels.copy() for level in CHANGEOVER_LEVELS}
+    positions = dict.fromkeys(CHANGEOVER_LEVELS, 0)
+    for pool in pools.values():
+        rng.shuffle(pool)
+
+    changeover_levels = list(itertools.islice(itertools.cycle(CHANGEOVER_LEVELS), count))
+    rng.shuffle(changeover_levels)
+
+    selected: list[tuple[str, str, str, str]] = []
+    for changeover in changeover_levels:
+        position = positions[changeover]
+        if position == len(other_levels):
+            rng.shuffle(pools[changeover])
+            position = 0
+        capacity, demand, stock = pools[changeover][position]
+        positions[changeover] = position + 1
+        selected.append((changeover, capacity, demand, stock))
     return selected
 
 
@@ -41,10 +57,13 @@ def _draw_dimension(rng: np.random.Generator, low: int, high: int) -> int:
     return int(rng.integers(low, high + 1))
 
 
-def _random_level_combination(rng: np.random.Generator) -> tuple[str, str, str, str]:
-    """Draw one random level combination for a retry attempt."""
+def _random_level_combination(
+    rng: np.random.Generator,
+    changeover: str,
+) -> tuple[str, str, str, str]:
+    """Redraw secondary levels for a retry without changing its stratum."""
     return (
-        str(rng.choice(CHANGEOVER_LEVELS)),
+        changeover,
         str(rng.choice(CAPACITY_LEVELS)),
         str(rng.choice(DEMAND_LEVELS)),
         str(rng.choice(STOCK_LEVELS)),
@@ -116,7 +135,7 @@ def _generate_instance_with_backtracking(
 
     for attempt in range(1, MAX_GENERATION_ATTEMPTS + 1):
         if attempt > 1:
-            levels = _random_level_combination(rng)
+            levels = _random_level_combination(rng, initial_levels[0])
 
         config, row = _build_generation_config(rng, args, instance_id, levels)
         preexisting_file = config.filepath.exists()
@@ -175,11 +194,11 @@ def generate_dataset(args: argparse.Namespace) -> Path:
 
 
 def parse_args() -> argparse.Namespace:
-    """Parse CLI arguments for the 150-instance benchmark generator."""
+    """Parse CLI arguments for the benchmark generator."""
     parser = argparse.ArgumentParser(
         description="Generate a balanced dataset of MPVRP-CC instances with numeric IDs only."
     )
-    parser.add_argument("--count", type=int, default=150, help="Number of instances to generate.")
+    parser.add_argument("--count", type=int, default=100, help="Number of instances to generate.")
     parser.add_argument("--start-id", type=int, default=1, help="First numeric instance ID.")
     parser.add_argument(
         "-o",
@@ -190,8 +209,13 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--manifest", default="manifest.csv", help="Manifest CSV filename written in output-dir.")
     parser.add_argument("--seed", type=int, default=20260507, help="Dataset seed.")
-    parser.add_argument("--grid", type=float, default=100.0, help="Coordinate grid size.")
-    parser.add_argument("--min-products", type=int, default=1, help="Minimum number of products.")
+    parser.add_argument("--grid", type=int, default=100, help="Integer coordinate grid size.")
+    parser.add_argument(
+        "--min-products",
+        type=int,
+        default=2,
+        help="Minimum number of products (at least 2 for a changeover benchmark).",
+    )
     parser.add_argument("--max-products", type=int, default=6, help="Maximum number of products.")
     parser.add_argument(
         "--min-demand-probability",
@@ -222,8 +246,8 @@ def main() -> int:
     if args.start_id < 0:
         LOGGER.error("--start-id must be non-negative.")
         return 1
-    if args.min_products < 1 or args.max_products < args.min_products:
-        LOGGER.error("Product bounds must satisfy 1 <= min-products <= max-products.")
+    if args.min_products < 2 or args.max_products < args.min_products:
+        LOGGER.error("Product bounds must satisfy 2 <= min-products <= max-products.")
         return 1
     if not 0 < args.min_demand_probability <= args.max_demand_probability <= 1:
         LOGGER.error("Demand probability bounds must satisfy 0 < min <= max <= 1.")

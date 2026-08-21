@@ -6,7 +6,7 @@ from pathlib import Path
 
 from mpvrp_cc.experiments.create_changeover_scenarios import zero_changeover_costs
 from mpvrp_cc.experiments.reevaluate_changeover_costs import reevaluate_solution_text
-from mpvrp_cc.io.instance_solution_io import MPVRPInstance
+from mpvrp_cc.io.instance_solution_io import MPVRPInstance, format_solution
 
 
 class ChangeoverScenarioTests(unittest.TestCase):
@@ -14,8 +14,8 @@ class ChangeoverScenarioTests(unittest.TestCase):
         source_text = (
             "# 00000000-0000-4000-8000-000000000000\n"
             "2 1 1 1 1\n"
-            "0 12.5\n"
-            "8.75 0\n"
+            "3 13\n"
+            "9 4\n"
             "1 100 1 1\n"
             "1 0 0 100 100\n"
             "1 0 0\n"
@@ -36,14 +36,14 @@ class ChangeoverScenarioTests(unittest.TestCase):
             self.assertEqual(paired_lines[4:], source_lines[4:])
 
             parsed = MPVRPInstance.read(destination)
-            self.assertEqual(parsed.changeover_cost, [[0.0, 0.0], [0.0, 0.0]])
+            self.assertEqual(parsed.changeover_cost, [[0, 0], [0, 0]])
 
     def test_fixed_solution_is_repriced_without_changing_routes(self) -> None:
         instance_text = (
             "# 00000000-0000-4000-8000-000000000000\n"
             "2 1 1 1 1\n"
-            "0 12.5\n"
-            "8.75 0\n"
+            "3 13\n"
+            "9 4\n"
             "1 100 1 1\n"
             "1 0 0 100 100\n"
             "1 0 0\n"
@@ -68,10 +68,42 @@ class ChangeoverScenarioTests(unittest.TestCase):
             updated, changes, cost = reevaluate_solution_text(solution_text, instance)
 
         self.assertEqual(changes, 1)
-        self.assertEqual(cost, 12.5)
-        self.assertIn("0(0.00) - 0(0.00) - 0(0.00) - 1(12.50) - 1(12.50)", updated)
-        self.assertIn("\n1\n1\n12.50\n10.00\n", updated)
+        self.assertEqual(cost, 16)
+        self.assertIn("0(0.00) - 0(3.00) - 0(3.00) - 1(16.00) - 1(16.00)", updated)
+        self.assertIn("\n1\n1\n16.00\n10.00\n", updated)
         self.assertEqual(updated.splitlines()[0], solution_text.splitlines()[0])
+
+    def test_same_product_trip_pays_preparation_without_counting_a_change(self) -> None:
+        instance_text = (
+            "# 00000000-0000-4000-8000-000000000000\n"
+            "1 1 1 1 1\n"
+            "3\n"
+            "1 100 1 1\n"
+            "1 0 0 100\n"
+            "1 0 0\n"
+            "1 1 0 10\n"
+        )
+        routes = [
+            {
+                "vehicle": 1,
+                "trip": 0,
+                "product": 1,
+                "start_depot": 1,
+                "end_depot": 1,
+                "deliveries": [{"station": 1, "quantity": 10}],
+                "path": ["S1"],
+            }
+        ]
+
+        with tempfile.TemporaryDirectory() as directory:
+            instance_path = Path(directory) / "MPVRP_TEST_s1_d1_p1.dat"
+            instance_path.write_text(instance_text, encoding="utf-8")
+            solution = format_solution(MPVRPInstance.read(instance_path), routes, 0.1, "Test CPU")
+
+        metrics = solution.splitlines()[-6:]
+        self.assertIn("0(0.00) - 0(3.00) - 0(3.00)", solution)
+        self.assertEqual(metrics[1], "0")
+        self.assertEqual(metrics[2], "3.00")
 
 
 if __name__ == "__main__":

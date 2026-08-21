@@ -156,7 +156,7 @@ def solve_dataset(args: argparse.Namespace) -> Path:
 
 
 def parse_args() -> argparse.Namespace:
-	parser = argparse.ArgumentParser(description="Solve the 150-instance benchmark set with a fixed time limit.")
+	parser = argparse.ArgumentParser(description="Solve the 100-instance benchmark set with a fixed time limit.")
 	parser.add_argument(
 		"--scenario",
 		choices=tuple(SCENARIO_DIRECTORIES),

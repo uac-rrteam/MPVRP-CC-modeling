@@ -24,14 +24,16 @@ def existing_instance_codes(instances_dir: Path) -> set[str]:
     }
 
 
-def _format_number(value: float) -> str:
-    if abs(value - round(value)) <= EPSILON:
-        return str(int(round(value)))
-    return f"{value:.1f}"
+def _format_number(value: int | float) -> str:
+    """Format one instance datum and reject non-integral values."""
+    numeric = float(value)
+    if not np.isfinite(numeric) or abs(numeric - round(numeric)) > EPSILON:
+        raise ValueError(f"Instance values must be integers; found {value!r}.")
+    return str(int(round(numeric)))
 
 
-def _format_row(values: np.ndarray | list[float]) -> str:
-    return "\t".join(_format_number(float(value)) for value in values)
+def _format_row(values: np.ndarray | list[int | float]) -> str:
+    return "\t".join(_format_number(value) for value in values)
 
 
 def write_instance(data: InstanceData, filepath: Path, force: bool = False) -> Path:
@@ -49,13 +51,23 @@ def write_instance(data: InstanceData, filepath: Path, force: bool = False) -> P
     return filepath
 
 
-def _parse_numeric_row(line: str, expected: int, line_number: int, report: VerificationReport) -> list[float] | None:
+def _parse_number(token: str) -> int:
+    """Parse one strict integer instance token."""
+    return int(token)
+
+
+def _parse_numeric_row(
+    line: str,
+    expected: int,
+    line_number: int,
+    report: VerificationReport,
+) -> list[int] | None:
     parts = line.split()
     if len(parts) != expected:
         report.error(f"Line {line_number}: expected {expected} values, found {len(parts)}.")
         return None
     try:
-        values = [float(part) for part in parts]
+        values = [_parse_number(part) for part in parts]
     except ValueError as exc:
         report.error(f"Line {line_number}: non-numeric value ({exc}).")
         return None
@@ -134,7 +146,7 @@ def load_instance_file(filepath: Path, report: VerificationReport) -> ParsedInst
 
     def read_block(rows: int, width: int, label: str) -> np.ndarray | None:
         nonlocal cursor
-        parsed_rows: list[list[float]] = []
+        parsed_rows: list[list[int]] = []
         for _ in range(rows):
             line_number, line = data_lines[cursor]
             cursor += 1
@@ -143,7 +155,7 @@ def load_instance_file(filepath: Path, report: VerificationReport) -> ParsedInst
                 return None
             parsed_rows.append(values)
         report.info(f"{label}: {rows} row(s), width {width}.")
-        return np.array(parsed_rows, dtype=float)
+        return np.array(parsed_rows, dtype=int)
 
     transition_costs = read_block(nb_products, nb_products, "transition_costs")
     vehicles = read_block(nb_vehicles, 4, "vehicles")

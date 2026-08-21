@@ -32,8 +32,14 @@ def validate_generation_config(config: GenerationConfig) -> VerificationReport:
             report.error(f"{name} must be at least 1.")
 
     # Validate spatial parameters
-    if config.grid_size <= 0:
+    if not isinstance(config.grid_size, (int, np.integer)):
+        report.error("grid_size must be an integer.")
+    elif config.grid_size <= 0:
         report.error("grid_size must be positive.")
+    if not isinstance(config.min_point_distance, (int, np.integer)):
+        report.error("min_point_distance must be an integer.")
+    elif config.min_point_distance < 1:
+        report.error("min_point_distance must be at least 1.")
     if not 0 < config.demand_probability <= 1:
         report.error("demand_probability must be in (0, 1].")
 
@@ -52,7 +58,11 @@ def validate_generation_config(config: GenerationConfig) -> VerificationReport:
         report.error("coordinate_strategy must be one of: uniform, clustered, corridor.")
 
     # Warn if minimum point distance is too large relative to grid size
-    if config.min_point_distance > config.grid_size:
+    if (
+        isinstance(config.grid_size, (int, np.integer))
+        and isinstance(config.min_point_distance, (int, np.integer))
+        and config.min_point_distance > config.grid_size
+    ):
         report.warning("min_point_distance is larger than the grid; coordinate retries may be exhausted.")
 
     return report
@@ -212,7 +222,7 @@ def _check_matrix(data: InstanceData, report: VerificationReport) -> None:
     Checks that:
     - All costs are finite numbers (not NaN or infinity)
     - All costs are non-negative
-    - Diagonal (same product) costs are exactly zero
+    - Cost-bearing matrices have strictly positive same-product setup costs
     - Warns if matrix appears to violate triangle inequality
     """
     matrix = data.transition_costs
@@ -225,9 +235,10 @@ def _check_matrix(data: InstanceData, report: VerificationReport) -> None:
     if np.any(matrix < -EPSILON):
         report.error("Transition costs must be non-negative.")
 
-    # Check diagonal is zero (no cost to stay with same product)
-    if not np.allclose(np.diag(matrix), 0.0):
-        report.error("Transition cost diagonal must be zero.")
+    # A zero matrix is the explicit no-cost control scenario. In every
+    # cost-bearing instance, same-product preparation must remain priced.
+    if not np.allclose(matrix, 0.0) and np.any(np.diag(matrix) <= EPSILON):
+        report.error("A cost-bearing transition matrix must have a strictly positive diagonal.")
 
     # If matrix is symmetric, check for triangle inequality violations
     # This is informational only; violations are allowed by the LP but unusual
@@ -268,7 +279,7 @@ def _check_default_trip_bound_scenario(data: InstanceData, report: VerificationR
     """Simulate necessary feasibility conditions for lp.py's default trip bound.
 
     The LP model uses a uniform per-vehicle trip bound calculated as:
-    max(ceil(total_demand / fleet_capacity), num_products)
+    max(ceil(total_demand / fleet_capacity) + 1, num_products)
 
     This function checks:
     1. The bound is at least the number of demanded products (each product needs mini-routes)
@@ -281,7 +292,7 @@ def _check_default_trip_bound_scenario(data: InstanceData, report: VerificationR
     total_demand = float(product_demands.sum())
 
     # Calculate the trip bound that lp.py will use
-    min_trips = _minimum_uniform_trip_bound(total_demand, total_capacity)
+    min_trips = _minimum_uniform_trip_bound(total_demand, total_capacity, data.nb_products)
     report.info(f"Minimum uniform trip bound used by lp.py default: {min_trips}.")
 
     # Check 1: bound must accommodate all demanded products
@@ -313,7 +324,11 @@ def _check_default_trip_bound_scenario(data: InstanceData, report: VerificationR
     _simulate_product_capacity_scenarios(data, min_trips, report)
 
 
-def _minimum_uniform_trip_bound(total_demand: float, total_capacity: float) -> int:
+def _minimum_uniform_trip_bound(
+    total_demand: float,
+    total_capacity: float,
+    product_count: int,
+) -> int:
     """Return the same uniform per-vehicle trip bound used by the MILP solver.
 
     This is the key feasibility calculation: how many trips does each vehicle need
@@ -321,7 +336,7 @@ def _minimum_uniform_trip_bound(total_demand: float, total_capacity: float) -> i
     """
     if total_demand <= EPSILON:
         return 0
-    return ceil(total_demand / total_capacity)
+    return max(ceil(total_demand / total_capacity) + 1, product_count)
 
 
 def _minimum_product_slots(data: InstanceData, product_demands: np.ndarray) -> int:
