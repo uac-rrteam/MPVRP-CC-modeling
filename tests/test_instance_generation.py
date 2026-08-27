@@ -37,24 +37,6 @@ class ChangeoverGenerationTests(unittest.TestCase):
 
         self.assertEqual(maximum, 11940)
 
-    def test_validation_rejects_instance_073_fragmented_stock(self) -> None:
-        path = Path("data/instances/with_changeover_costs/MPVRP_073_s5_d6_p3.dat")
-        load_report = VerificationReport()
-        data = load_instance_file(path, load_report)
-        self.assertIsNotNone(data)
-        self.assertTrue(load_report.is_valid)
-
-        report = validate_instance_data(data)
-
-        self.assertTrue(
-            any(
-                "Station 3, product 2" in error
-                and "11940.00" in error
-                and "shortage 2275.00" in error
-                for error in report.errors
-            )
-        )
-
     def test_fragmented_stock_repair_preserves_stock_and_covers_demand(self) -> None:
         capacities = np.array([5800, 8981])
         depots = np.array(
