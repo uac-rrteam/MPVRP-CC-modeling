@@ -140,16 +140,24 @@ def validate_instance_data(data: InstanceData) -> VerificationReport:
     if total_capacity <= EPSILON:
         report.error("Fleet has no usable capacity.")
     else:
-        # No single station/product demand should exceed fleet capacity
-        # (LP permits at most one visit per vehicle for each station/product pair)
+        # A station/product demand must be coverable by distinct vehicles, with
+        # each vehicle loading its contribution at one depot.  Total fleet
+        # capacity alone is not sufficient when product stock is fragmented.
+        maximum_delivery_by_product = [
+            maximum_station_product_delivery(data.vehicles[:, 1], data.depots[:, 3 + product_idx])
+            for product_idx in range(nb_p)
+        ]
         for station in data.stations:
             station_id = int(station[0])
             for product_idx, demand in enumerate(station[3:], start=1):
-                if demand > total_capacity + EPSILON:
+                if demand <= EPSILON:
+                    continue
+                maximum_delivery = maximum_delivery_by_product[product_idx - 1]
+                if demand > maximum_delivery + EPSILON:
                     report.error(
                         f"Station {station_id}, product {product_idx}: demand {demand:.2f} exceeds "
-                        f"total fleet capacity {total_capacity:.2f}. lp.py permits at most one visit "
-                        "per vehicle for a station/product pair."
+                        f"the maximum deliverable quantity {maximum_delivery:.2f} from compatible "
+                        f"depot stocks using distinct vehicles (shortage {demand - maximum_delivery:.2f})."
                     )
 
         # Check feasibility conditions specific to the LP model's trip bound
@@ -159,6 +167,63 @@ def validate_instance_data(data: InstanceData) -> VerificationReport:
     _check_geographic_overlap(data, report)
 
     return report
+
+
+def maximum_station_product_delivery(capacities: np.ndarray, depot_stocks: np.ndarray) -> float:
+    """Return the most one station/product pair can receive under the route rules.
+
+    Each vehicle may contribute at most once and that contribution must be loaded
+    at one depot.  Several vehicles may use the same depot, but their combined load
+    cannot exceed its stock.  A subset dynamic program considers every assignment
+    of vehicles to depots; benchmark instances contain at most ten vehicles.
+
+    For unusually large externally supplied fleets, a safe upper bound is returned.
+    It can still prove infeasibility without making validation exponential or
+    incorrectly rejecting a feasible instance.
+    """
+    usable_capacities = [float(value) for value in capacities if value > EPSILON]
+    usable_stocks = [float(value) for value in depot_stocks if value > EPSILON]
+    if not usable_capacities or not usable_stocks:
+        return 0.0
+
+    # The benchmark generator is capped at ten vehicles.  Keep validation of
+    # arbitrary third-party instances predictable while retaining a sound check.
+    if len(usable_capacities) > 12:
+        largest_stock = max(usable_stocks)
+        return min(
+            sum(usable_capacities),
+            sum(usable_stocks),
+            sum(min(capacity, largest_stock) for capacity in usable_capacities),
+        )
+
+    state_count = 1 << len(usable_capacities)
+    subset_capacity = [0.0] * state_count
+    for mask in range(1, state_count):
+        bit = mask & -mask
+        vehicle_idx = bit.bit_length() - 1
+        subset_capacity[mask] = subset_capacity[mask ^ bit] + usable_capacities[vehicle_idx]
+
+    unreachable = float("-inf")
+    best = [unreachable] * state_count
+    best[0] = 0.0
+    full_mask = state_count - 1
+
+    for stock in usable_stocks:
+        updated = best.copy()
+        for used_mask, delivered_before in enumerate(best):
+            if delivered_before == unreachable:
+                continue
+            available = full_mask ^ used_mask
+            assigned = available
+            while assigned:
+                new_mask = used_mask | assigned
+                delivered = delivered_before + min(stock, subset_capacity[assigned])
+                if delivered > updated[new_mask]:
+                    updated[new_mask] = delivered
+                assigned = (assigned - 1) & available
+        best = updated
+
+    return max(best)
 
 
 def validate_parsed_instance(instance: ParsedInstance) -> VerificationReport:

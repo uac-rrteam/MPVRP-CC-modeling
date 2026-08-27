@@ -14,16 +14,89 @@ from mpvrp_cc.experiments.generate_benchmark import (
 from mpvrp_cc.generation.instance_generator import (
     CHANGEOVER_COST_RANGES,
     _generate_mixed_transition_costs,
+    _repair_fragmented_depot_stocks,
     _generate_transition_costs,
     generate_instance_data,
 )
-from mpvrp_cc.generation.config import GenerationConfig
-from mpvrp_cc.generation.instance_file_io import write_instance
-from mpvrp_cc.generation.validation import _minimum_uniform_trip_bound
+from mpvrp_cc.generation.config import GenerationConfig, VerificationReport
+from mpvrp_cc.generation.instance_file_io import load_instance_file, write_instance
+from mpvrp_cc.generation.validation import (
+    _minimum_uniform_trip_bound,
+    maximum_station_product_delivery,
+    validate_instance_data,
+)
 from mpvrp_cc.io.instance_solution_io import MPVRPInstance
 
 
 class ChangeoverGenerationTests(unittest.TestCase):
+    def test_fragmented_stock_bound_matches_instance_073_shortage(self) -> None:
+        maximum = maximum_station_product_delivery(
+            np.array([5800, 8981]),
+            np.array([4083, 4344, 6131, 5492, 6140, 0]),
+        )
+
+        self.assertEqual(maximum, 11940)
+
+    def test_validation_rejects_instance_073_fragmented_stock(self) -> None:
+        path = Path("data/instances/with_changeover_costs/MPVRP_073_s5_d6_p3.dat")
+        load_report = VerificationReport()
+        data = load_instance_file(path, load_report)
+        self.assertIsNotNone(data)
+        self.assertTrue(load_report.is_valid)
+
+        report = validate_instance_data(data)
+
+        self.assertTrue(
+            any(
+                "Station 3, product 2" in error
+                and "11940.00" in error
+                and "shortage 2275.00" in error
+                for error in report.errors
+            )
+        )
+
+    def test_fragmented_stock_repair_preserves_stock_and_covers_demand(self) -> None:
+        capacities = np.array([5800, 8981])
+        depots = np.array(
+            [
+                [1, 0, 0, 4083],
+                [2, 0, 0, 4344],
+                [3, 0, 0, 6131],
+                [4, 0, 0, 5492],
+                [5, 0, 0, 6140],
+                [6, 0, 0, 0],
+            ]
+        )
+        stations = np.array([[1, 0, 0, 14215]])
+        original_total = int(depots[:, 3].sum())
+
+        _repair_fragmented_depot_stocks(depots, stations, capacities)
+
+        self.assertEqual(int(depots[:, 3].sum()), original_total)
+        self.assertGreaterEqual(
+            maximum_station_product_delivery(capacities, depots[:, 3]),
+            14215,
+        )
+
+    def test_generated_stock_is_compatible_with_distinct_vehicle_visits(self) -> None:
+        config = GenerationConfig(
+            instance_code="FRAGMENTATION_TEST",
+            vehicles=2,
+            depots=6,
+            garages=3,
+            stations=5,
+            products=3,
+            capacity_level="mixed",
+            demand_level="high",
+            stock_level="low",
+            demand_probability=0.7,
+            seed=2048827690,
+        )
+
+        report = validate_instance_data(generate_instance_data(config))
+
+        self.assertTrue(report.is_valid, report.errors)
+
     def test_validation_trip_bound_matches_solver_formula(self) -> None:
         self.assertEqual(_minimum_uniform_trip_bound(100, 100, 3), 3)
         self.assertEqual(_minimum_uniform_trip_bound(500, 100, 2), 6)

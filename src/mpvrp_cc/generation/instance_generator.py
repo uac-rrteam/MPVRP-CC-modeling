@@ -10,7 +10,11 @@ import numpy as np
 from mpvrp_cc.cli.validate_instance import log_report, verify_instance
 from mpvrp_cc.generation.instance_file_io import existing_instance_codes, write_instance
 from mpvrp_cc.generation.config import DEFAULT_OUTPUT_DIR, EPSILON, GenerationConfig, InstanceData
-from mpvrp_cc.generation.validation import validate_generation_config, validate_instance_data
+from mpvrp_cc.generation.validation import (
+    maximum_station_product_delivery,
+    validate_generation_config,
+    validate_instance_data,
+)
 
 LOGGER = logging.getLogger("mpvrp_cc.instance_generator")
 
@@ -107,6 +111,7 @@ def generate_instance_data(config: GenerationConfig) -> InstanceData:
 
     # Create depots with sufficient stock to cover all demands
     depots = _generate_depots(rng, config, total_demands, points)
+    _repair_fragmented_depot_stocks(depots, stations, vehicle_capacities)
 
     # Create garages (vehicle parking/maintenance facilities) near depots for efficiency
     garages = _generate_garages(rng, config, points, depots)
@@ -483,6 +488,48 @@ def _stock_surplus_ratio(rng: np.random.Generator, level: str) -> float:
         level = str(rng.choice(["low", "medium", "high"]))
     low, high = STOCK_SURPLUS_RATIOS[level]
     return float(rng.uniform(low, high))
+
+
+def _repair_fragmented_depot_stocks(
+    depots: np.ndarray,
+    stations: np.ndarray,
+    vehicle_capacities: np.ndarray,
+) -> None:
+    """Rebalance stock so every station/product demand is locally coverable.
+
+    Total product stock and fleet capacity do not imply this condition: stock can
+    be split into depot quantities that distinct vehicles cannot combine.  When
+    that happens, stock is moved from the smallest donor depots to the largest
+    depot until the exact assignment bound covers the largest station demand.
+    Total stock is unchanged.
+    """
+    for product_idx in range(stations.shape[1] - 3):
+        stock_column = 3 + product_idx
+        stocks = depots[:, stock_column]
+        maximum_demand = float(stations[:, stock_column].max())
+        maximum_delivery = maximum_station_product_delivery(vehicle_capacities, stocks)
+        if maximum_delivery + EPSILON >= maximum_demand:
+            continue
+
+        receiver_idx = int(np.argmax(stocks))
+        donor_indices = sorted(
+            (idx for idx in range(len(stocks)) if idx != receiver_idx),
+            key=lambda idx: int(stocks[idx]),
+        )
+
+        for donor_idx in donor_indices:
+            while stocks[donor_idx] > 0 and maximum_delivery + EPSILON < maximum_demand:
+                shortage = int(ceil(maximum_demand - maximum_delivery))
+                transfer = min(shortage, int(stocks[donor_idx]))
+                stocks[donor_idx] -= transfer
+                stocks[receiver_idx] += transfer
+                maximum_delivery = maximum_station_product_delivery(vehicle_capacities, stocks)
+
+        if maximum_delivery + EPSILON < maximum_demand:
+            raise ValueError(
+                f"Product {product_idx + 1} stock cannot cover station demand {maximum_demand:.0f} "
+                "using distinct vehicles and one loading depot per vehicle."
+            )
 
 
 def _generate_garages(
