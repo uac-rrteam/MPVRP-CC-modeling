@@ -176,7 +176,7 @@ def generate_dataset(args: argparse.Namespace) -> Path:
     for offset, (changeover, capacity, demand, stock) in enumerate(level_combinations):
         number = args.start_id + offset
         instance_id = f"{number:03d}"
-        # The generator will adjust demand so lp.py's default trip bound is at
+        # The generator will adjust demand so the MILP trip horizon is at
         # least the product count; these ranges keep the batch diverse without
         # forcing obviously oversized fleets for tiny product sets.
         path, row = _generate_instance_with_backtracking(rng, args, instance_id, (changeover, capacity, demand, stock))

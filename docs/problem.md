@@ -91,6 +91,10 @@ where:
 
 This creates the central trade-off of the problem. The shortest routes are not always the least expensive: a slightly longer plan may reduce costly preparations, while a compact route may require more product transitions or loading setups.
 
+As specified in the instance format, every arc distance is the Euclidean
+distance between its endpoints rounded to the nearest integer. The total travel
+distance is the sum of these rounded arc distances.
+
 ## 7. Conditions for a feasible solution
 
 A solution is feasible when:

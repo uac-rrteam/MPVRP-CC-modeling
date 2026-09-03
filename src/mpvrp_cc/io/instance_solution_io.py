@@ -71,8 +71,7 @@ class MPVRPInstance:
         self.stations: List[StationNode] = []
         self.depots: List[DepotNode] = []
         self.garages: List[GarageNode] = []
-        # Integer matrix intended for constraint-programming models. The MILP
-        # still calls MPVRPNode.distance() to use exact Euclidean distances.
+        # Integer distances prescribed by the public instance format.
         self.dist_matrix: List[List[int]] = []
         self.source_path: Optional[Path] = None
         self.instance_id: str = "unknown"
@@ -276,19 +275,15 @@ def _solution_distance(instance: MPVRPInstance, grouped_routes: Mapping[int, Seq
 
         for route in routes:
             start_depot = depots[int(route["start_depot"])]
-            total += previous_node.distance(start_depot)
+            total += round(previous_node.distance(start_depot))
 
             previous_node = start_depot
             for station_id in _route_station_order(route):
                 station = stations[station_id]
-                total += previous_node.distance(station)
+                total += round(previous_node.distance(station))
                 previous_node = station
 
-            end_depot = depots[int(route.get("end_depot", route["start_depot"]))]
-            total += previous_node.distance(end_depot)
-            previous_node = end_depot
-
-        total += previous_node.distance(vehicle.start_g)
+        total += round(previous_node.distance(vehicle.start_g))
 
     return total
 

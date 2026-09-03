@@ -89,7 +89,6 @@ class ChangeoverScenarioTests(unittest.TestCase):
                 "trip": 0,
                 "product": 1,
                 "start_depot": 1,
-                "end_depot": 1,
                 "deliveries": [{"station": 1, "quantity": 10}],
                 "path": ["S1"],
             }
@@ -104,6 +103,50 @@ class ChangeoverScenarioTests(unittest.TestCase):
         self.assertIn("0(0.00) - 0(3.00) - 0(3.00)", solution)
         self.assertEqual(metrics[1], "0")
         self.assertEqual(metrics[2], "3.00")
+
+    def test_distance_follows_the_serialized_route_and_rounds_each_arc(self) -> None:
+        instance_text = (
+            "# 00000000-0000-4000-8000-000000000000\n"
+            "1 2 1 2 1\n"
+            "0\n"
+            "1 100 1 1\n"
+            "1 1 1 10\n"
+            "2 4 0 10\n"
+            "1 0 0\n"
+            "1 2 0 5\n"
+            "2 5 0 5\n"
+        )
+        routes = [
+            {
+                "vehicle": 1,
+                "trip": 1,
+                "product": 1,
+                "start_depot": 1,
+                "path": ["D1", "S1", "D2"],
+                "deliveries": [{"station": 1, "quantity": 5}],
+            },
+            {
+                "vehicle": 1,
+                "trip": 2,
+                "product": 1,
+                "start_depot": 2,
+                "path": ["D2", "S2"],
+                "deliveries": [{"station": 2, "quantity": 5}],
+            },
+        ]
+
+        with tempfile.TemporaryDirectory() as directory:
+            instance_path = Path(directory) / "MPVRP_TEST_s2_d2_p1.dat"
+            instance_path.write_text(instance_text, encoding="utf-8")
+            solution = format_solution(MPVRPInstance.read(instance_path), routes, 0.1, "Test CPU")
+
+        lines = solution.splitlines()
+        self.assertEqual(
+            lines[0],
+            "1: 1 - 1 [5] - 1 (5) - 2 [5] - 2 (5) - 1",
+        )
+        # Rounded arcs: G-D1=1, D1-S1=1, S1-D2=2, D2-S2=1, S2-G=5.
+        self.assertEqual(lines[-3], "10.00")
 
 
 if __name__ == "__main__":

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from math import ceil
-
 import numpy as np
 
 from mpvrp_cc.generation.config import (
@@ -160,7 +158,7 @@ def validate_instance_data(data: InstanceData) -> VerificationReport:
                         f"depot stocks using distinct vehicles (shortage {demand - maximum_delivery:.2f})."
                     )
 
-        # Check feasibility conditions specific to the LP model's trip bound
+        # Report the safe horizon used by the MILP model.
         _check_default_trip_bound_scenario(data, report)
 
     # Warn about geographic locations that are too close together
@@ -327,7 +325,7 @@ def _check_matrix(data: InstanceData, report: VerificationReport) -> None:
     if violations:
         report.warning(
             f"Transition costs violate triangle inequality in {len(violations)} case(s); "
-            "this is allowed by lp.py but may affect changeover incentives."
+            "this is allowed by the MPVRP-CC definition and may affect changeover incentives."
         )
 
 
@@ -341,186 +339,16 @@ def _check_nonnegative(name: str, values: np.ndarray, report: VerificationReport
 
 
 def _check_default_trip_bound_scenario(data: InstanceData, report: VerificationReport) -> None:
-    """Simulate necessary feasibility conditions for lp.py's default trip bound.
-
-    The LP model uses a uniform per-vehicle trip bound calculated as:
-    max(ceil(total_demand / fleet_capacity) + 1, num_products)
-
-    This function checks:
-    1. The bound is at least the number of demanded products (each product needs mini-routes)
-    2. Enough trip slots exist for all demanded products
-    3. Product-level capacity lower bounds can be satisfied
-    4. Greedy assignment simulations succeed
-    """
-    total_capacity = float(data.vehicles[:, 1].sum())
-    product_demands = data.stations[:, 3:].sum(axis=0)
-    total_demand = float(product_demands.sum())
-
-    # Calculate the trip bound that lp.py will use
-    min_trips = _minimum_uniform_trip_bound(total_demand, total_capacity, data.nb_products)
-    report.info(f"Minimum uniform trip bound used by lp.py default: {min_trips}.")
-
-    # Check 1: bound must accommodate all demanded products
-    active_products = int(np.count_nonzero(product_demands > EPSILON))
-    if min_trips < active_products:
-        report.error(
-            "Default LP trip bound is lower than the number of demanded products: "
-            f"bound={min_trips}, demanded_products={active_products}. Each mini-route carries exactly one product."
-        )
-
-    # Check 2: enough trip slots exist across the entire fleet
-    total_slots = data.nb_vehicles * min_trips
-    if total_slots < active_products:
-        report.error(
-            "Default LP trip slots cannot assign at least one mini-route to each demanded product: "
-            f"vehicles * bound = {data.nb_vehicles} * {min_trips} = {total_slots}, "
-            f"demanded_products={active_products}."
-        )
-
-    # Check 3: product-level capacity lower bounds can be met
-    required_slots = _minimum_product_slots(data, product_demands)
-    if required_slots > total_slots:
-        report.error(
-            "Default LP trip slots are insufficient for product-level capacity lower bounds: "
-            f"required_slots={required_slots}, available_slots={total_slots}."
-        )
-
-    # Check 4: greedy simulation to ensure demand can actually be assigned
-    _simulate_product_capacity_scenarios(data, min_trips, report)
+    """Report the solver's safe default per-vehicle trip horizon."""
+    trip_bound = _safe_uniform_trip_bound(data.stations[:, 3:])
+    report.info(f"Safe uniform trip bound used by the MILP solver: {trip_bound}.")
 
 
-def _minimum_uniform_trip_bound(
-    total_demand: float,
-    total_capacity: float,
-    product_count: int,
+def _safe_uniform_trip_bound(
+    station_demands: np.ndarray,
 ) -> int:
-    """Return the same uniform per-vehicle trip bound used by the MILP solver.
-
-    This is the key feasibility calculation: how many trips does each vehicle need
-    to make to handle all product demands?
-    """
-    if total_demand <= EPSILON:
-        return 0
-    return max(ceil(total_demand / total_capacity) + 1, product_count)
-
-
-def _minimum_product_slots(data: InstanceData, product_demands: np.ndarray) -> int:
-    """Estimate the minimum number of single-product trip slots needed.
-
-    Calculates how many vehicle trips are needed considering both:
-    - Total demand per product (aggregate constraint)
-    - Individual station demands (locality constraint - each station needs multiple vehicles)
-    """
-    max_vehicle_capacity = float(data.vehicles[:, 1].max())
-    required = 0
-
-    for product_idx, product_demand in enumerate(product_demands):
-        if product_demand <= EPSILON:
-            continue  # No demand for this product
-
-        # Aggregate trips: how many large vehicles needed to cover all demand?
-        aggregate_slots = ceil(product_demand / max_vehicle_capacity)
-
-        # Locality trips: different stations may need multiple different vehicles
-        # Find the maximum number of vehicles needed for any single station
-        station_slots = max(
-            _minimum_distinct_vehicle_slots(float(demand), data.vehicles[:, 1])
-            for demand in data.stations[:, 3 + product_idx]
-            if demand > EPSILON
-        )
-
-        # Use the maximum of both constraints (both must be satisfied)
-        required += max(1, aggregate_slots, station_slots)
-
-    return required
-
-
-def _minimum_distinct_vehicle_slots(demand: float, capacities: np.ndarray) -> int:
-    """Find how many different vehicles are needed for one station/product demand.
-
-    Greedy algorithm: use the largest available vehicles first.
-    This gives the minimum number of vehicles needed.
-    """
-    remaining = demand
-    for slots, capacity in enumerate(sorted(capacities, reverse=True), start=1):
-        remaining -= float(capacity)
-        if remaining <= EPSILON:
-            return slots
-    return len(capacities) + 1
-
-
-def _simulate_product_capacity_scenarios(data: InstanceData, min_trips: int, report: VerificationReport) -> None:
-    """Greedily test whether each product can fit into default trip capacity.
-
-    For each product, simulates a greedy assignment of station demands to vehicle trips.
-    Warns if any station/product combination cannot be feasibly assigned.
-    This is a practical feasibility check beyond the mathematical lower bounds.
-    """
-    if min_trips < 1:
-        return
-
-    capacities = data.vehicles[:, 1].astype(float)
-
-    # Test each product independently
-    for product_idx in range(data.nb_products):
-        # Collect all demands for this product
-        demands = [
-            (int(station[0]), float(station[3 + product_idx]))
-            for station in data.stations
-            if station[3 + product_idx] > EPSILON
-        ]
-        if not demands:
-            continue  # No demand for this product
-
-        # Create a capacity tracking structure: for each vehicle, track available capacity in each trip
-        remaining_by_vehicle = [[float(capacity)] * min_trips for capacity in capacities]
-
-        # Try to greedily assign demands (sorted largest first for better packing)
-        for station_id, demand in sorted(demands, key=lambda item: item[1], reverse=True):
-            if not _assign_station_product_demand(demand, remaining_by_vehicle):
-                report.warning(
-                    f"Product {product_idx + 1}, station {station_id}: demand {demand:.2f} cannot be assigned "
-                    f"by the greedy scenario within {min_trips} default trip(s) per vehicle without visiting the same "
-                    "station/product twice with one vehicle."
-                )
-                break
-
-
-def _assign_station_product_demand(demand: float, remaining_by_vehicle: list[list[float]]) -> bool:
-    """Assign one station/product demand across distinct vehicles if possible.
-
-    This function tries to split the demand among different vehicles such that
-    no single vehicle visits the same station/product combination twice.
-    Uses a greedy approach: pick the vehicle with the most available capacity.
-    """
-    remaining = demand
-    used_vehicles: set[int] = set()
-
-    while remaining > EPSILON:
-        best_vehicle = None
-        best_trip = None
-        best_capacity = 0.0
-
-        # Find the best available vehicle/trip combination
-        for vehicle_idx, trip_capacities in enumerate(remaining_by_vehicle):
-            if vehicle_idx in used_vehicles:
-                continue  # Already used this vehicle for this station/product
-            for trip_idx, capacity in enumerate(trip_capacities):
-                if capacity > best_capacity + EPSILON:
-                    best_vehicle = vehicle_idx
-                    best_trip = trip_idx
-                    best_capacity = capacity
-
-        if best_vehicle is None or best_trip is None:
-            return False  # Cannot assign remaining demand
-
-        # Assign as much demand as possible to this vehicle's trip
-        delivered = min(remaining, best_capacity)
-        remaining_by_vehicle[best_vehicle][best_trip] -= delivered
-        used_vehicles.add(best_vehicle)  # Mark vehicle as used for this product
-        remaining -= delivered
-
-    return True  # Successfully assigned all demand
+    """Count positive station-product pairs, as the MILP solver does."""
+    return int(np.count_nonzero(station_demands > EPSILON))
 
 
 def _check_geographic_overlap(data: InstanceData, report: VerificationReport) -> None:
@@ -555,7 +383,7 @@ def _check_lp_parser_compatibility(instance: ParsedInstance, report: Verificatio
     """Load the file through the canonical parser to catch format mismatches.
 
     This is the final compatibility check: attempt to actually parse the file
-    using the LP model's parser. Catches file format issues that aren't caught
+    using the optimization model's parser. Catches file format issues that aren't caught
     by the numpy-based validation.
     """
     try:

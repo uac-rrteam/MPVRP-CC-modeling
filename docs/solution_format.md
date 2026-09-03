@@ -80,7 +80,7 @@ They contain, in this order:
 1. **Vehicles used** — the number of vehicles that perform at least one delivery.
 2. **Product transitions** — the number of genuine product changes, excluding same-product loading operations.
 3. **Total transition cost** — the sum of all preparation and loading-related transition costs.
-4. **Total distance** — the Euclidean distance traveled by the complete fleet.
+4. **Total distance** — the sum of the rounded Euclidean arc distances traveled by the complete fleet.
 5. **Processor** — the processor used to produce the solution.
 6. **Resolution time** — the computation time in seconds.
 
