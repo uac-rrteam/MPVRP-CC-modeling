@@ -4,8 +4,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from mpvrp_cc.io.instance_solution_io import MPVRPInstance
-from mpvrp_cc.optimization.milp_solver import _maximum_uniform_trip_bound
+from lp1.schemas import MPVRPInstance
+from lp1.model import _maximum_uniform_trip_bound
 
 
 class MilpFormulationTests(unittest.TestCase):

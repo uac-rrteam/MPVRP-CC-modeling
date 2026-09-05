@@ -9,8 +9,8 @@ from unittest.mock import patch
 
 from gurobipy import GRB
 
-from mpvrp_cc.experiments.solve_benchmark import solve_dataset
-from mpvrp_cc.optimization.milp_solver import MilpSolution
+from tools.solve import solve_dataset
+from lp1.model import MilpSolution
 
 
 class BenchmarkReportTests(unittest.TestCase):
@@ -53,8 +53,8 @@ class BenchmarkReportTests(unittest.TestCase):
             )
 
             with (
-                patch("mpvrp_cc.experiments.solve_benchmark.solve_milp", return_value=mocked_solution),
-                patch("mpvrp_cc.experiments.solve_benchmark.write_solution"),
+                patch("tools.solve.solve_milp", return_value=mocked_solution),
+                patch("tools.solve.write_solution"),
             ):
                 solve_dataset(args)
 

@@ -8,11 +8,11 @@ from pathlib import Path
 
 import numpy as np
 
-from mpvrp_cc.generation.instance_generator import configure_logging, generate
-from mpvrp_cc.generation.config import GenerationConfig
-from mpvrp_cc.paths import WITH_CHANGEOVER_INSTANCES_DIR
+from tools.gen import configure_logging, generate
+from tools.gen_data import GenerationConfig
+from common.paths import WITH_CHANGEOVER_INSTANCES_DIR
 
-LOGGER = logging.getLogger("mpvrp_cc.generate_benchmark")
+LOGGER = logging.getLogger("tools.benchmark")
 MAX_GENERATION_ATTEMPTS = 50
 
 # Low changeover costs are reserved for separate sensitivity experiments.  The

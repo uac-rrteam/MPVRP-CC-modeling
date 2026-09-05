@@ -4,9 +4,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from mpvrp_cc.experiments.create_changeover_scenarios import zero_changeover_costs
-from mpvrp_cc.experiments.reevaluate_changeover_costs import reevaluate_solution_text
-from mpvrp_cc.io.instance_solution_io import MPVRPInstance, format_solution
+from tools.scenarios import zero_changeover_costs
+from tools.reevaluate import reevaluate_solution_text
+from lp1.io.sol import format_solution
+from lp1.schemas import MPVRPInstance
 
 
 class ChangeoverScenarioTests(unittest.TestCase):

@@ -1,13 +1,20 @@
 from __future__ import annotations
 
+import argparse
+import logging
 from math import ceil
+from pathlib import Path
 
 import numpy as np
 
-from mpvrp_cc.generation.config import (
+from tools.gen_data import (
     EPSILON, GenerationConfig, InstanceData, ParsedInstance, VerificationReport
 )
-from mpvrp_cc.io.instance_solution_io import MPVRPInstance
+from lp1.schemas import MPVRPInstance
+from tools.gen_io import load_instance_file
+
+
+LOGGER = logging.getLogger("tools.validation")
 
 
 
@@ -424,3 +431,64 @@ def _check_lp_parser_compatibility(instance: ParsedInstance, report: Verificatio
         )
     else:
         report.info("LP parser compatibility: ok.")
+
+
+def log_report(report: VerificationReport, logger: logging.Logger = LOGGER) -> None:
+    for message in report.infos:
+        logger.info(message)
+    for message in report.warnings:
+        logger.warning(message)
+    for message in report.errors:
+        logger.error(message)
+    if report.errors:
+        logger.error(
+            "Status: INVALID (%d error(s), %d warning(s)).",
+            len(report.errors),
+            len(report.warnings),
+        )
+    else:
+        logger.info("Status: VALID (%d warning(s)).", len(report.warnings))
+
+
+def verify_instance(
+    filepath: str | Path,
+    logger: logging.Logger = LOGGER,
+) -> VerificationReport:
+    path = Path(filepath)
+    report = VerificationReport()
+    logger.info("Verifying instance: %s", path)
+    instance = load_instance_file(path, report)
+    if instance is not None:
+        parsed_report = validate_parsed_instance(instance)
+        report.errors.extend(parsed_report.errors)
+        report.warnings.extend(parsed_report.warnings)
+        report.infos.extend(parsed_report.infos)
+    return report
+
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Validate an MPVRP-CC instance file for solver compatibility."
+    )
+    parser.add_argument("filepath", type=Path, help="Path to the .dat instance file.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="Only log warnings and errors.")
+    parser.add_argument("--verbose", action="store_true", help="Enable debug logging.")
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = _parse_args()
+    if args.quiet:
+        level = logging.WARNING
+    elif args.verbose:
+        level = logging.DEBUG
+    else:
+        level = logging.INFO
+    logging.basicConfig(level=level, format="%(levelname)s: %(message)s")
+    report = verify_instance(args.filepath)
+    log_report(report)
+    return 0 if report.is_valid else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

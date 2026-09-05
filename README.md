@@ -8,13 +8,16 @@ The project studies how product-transition costs influence route planning for a 
 
 ```text
 .
-├── src/mpvrp_cc/
-│   ├── cli/                 # Command-line validation
-│   ├── experiments/         # Benchmark generation, pairing, and solving
-│   ├── generation/          # Instance generation, schemas, I/O, and validation
-│   ├── io/                  # Instance parsing and solution serialization
-│   ├── optimization/        # Canonical Gurobi MILP solver
-│   └── paths.py             # Central project paths
+├── code/
+│   ├── common/
+│   │   └── paths.py         # Central project paths
+│   ├── lp1/                 # First LP formulation
+│   │   ├── io/
+│   │   │   ├── inst.py      # Instance parser
+│   │   │   └── sol.py       # Solution formatter and writer
+│   │   ├── model.py         # Gurobi model
+│   │   └── schemas.py       # LP1 data structures
+│   └── tools/               # Generation and experiment commands
 ├── data/
 │   ├── instances/
 │   │   ├── with_changeover_costs/     # Generated benchmark instances
@@ -35,7 +38,15 @@ Python 3.12 or later and a valid Gurobi installation/license are required.
 uv sync
 ```
 
-After installation, the project exposes dedicated commands. During local development, the equivalent modules can also be run with `PYTHONPATH=src python -m ...`.
+After installation, the project exposes dedicated commands. `uv run` also
+discovers the packages directly from `code/`, so no manual `PYTHONPATH` setup
+is needed.
+
+Run the test suite with:
+
+```bash
+uv run pytest
+```
 
 ## Common commands
 

@@ -6,26 +6,26 @@ from pathlib import Path
 
 import numpy as np
 
-from mpvrp_cc.experiments.generate_benchmark import (
+from tools.benchmark import (
     CHANGEOVER_LEVELS,
     _level_combinations,
     _random_level_combination,
 )
-from mpvrp_cc.generation.instance_generator import (
+from tools.gen import (
     CHANGEOVER_COST_RANGES,
     _generate_mixed_transition_costs,
     _repair_fragmented_depot_stocks,
     _generate_transition_costs,
     generate_instance_data,
 )
-from mpvrp_cc.generation.config import GenerationConfig, VerificationReport
-from mpvrp_cc.generation.instance_file_io import load_instance_file, write_instance
-from mpvrp_cc.generation.validation import (
+from tools.gen_data import GenerationConfig, VerificationReport
+from tools.gen_io import load_instance_file, write_instance
+from tools.validation import (
     _maximum_uniform_trip_bound,
     maximum_station_product_delivery,
     validate_instance_data,
 )
-from mpvrp_cc.io.instance_solution_io import MPVRPInstance
+from lp1.schemas import MPVRPInstance
 
 
 class ChangeoverGenerationTests(unittest.TestCase):

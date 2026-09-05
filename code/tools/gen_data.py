@@ -5,7 +5,7 @@ from pathlib import Path
 
 import numpy as np
 
-from mpvrp_cc.paths import GENERATED_INSTANCES_DIR
+from common.paths import GENERATED_INSTANCES_DIR
 
 DEFAULT_OUTPUT_DIR = GENERATED_INSTANCES_DIR
 EPSILON = 1e-6

@@ -8,17 +8,18 @@ from pathlib import Path
 
 from gurobipy import GRB
 
-from mpvrp_cc.generation.instance_generator import configure_logging
-from mpvrp_cc.io.instance_solution_io import MPVRPInstance, write_solution
-from mpvrp_cc.optimization.milp_solver import solve_milp
-from mpvrp_cc.paths import (
+from tools.gen import configure_logging
+from lp1.io.sol import write_solution
+from lp1.model import solve_milp
+from lp1.schemas import MPVRPInstance
+from common.paths import (
 	WITH_CHANGEOVER_INSTANCES_DIR,
 	WITH_CHANGEOVER_SOLUTIONS_DIR,
 	WITHOUT_CHANGEOVER_INSTANCES_DIR,
 	WITHOUT_CHANGEOVER_SOLUTIONS_DIR,
 )
 
-LOGGER = logging.getLogger("mpvrp_cc.solve_benchmark")
+LOGGER = logging.getLogger("tools.solve")
 DEFAULT_TIME_LIMIT = 190
 
 

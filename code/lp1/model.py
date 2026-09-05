@@ -1,32 +1,21 @@
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
 from math import ceil
 
 from gurobipy import GRB, Model, quicksum
 
-from mpvrp_cc.io.instance_solution_io import MPVRPInstance, MPVRPNode, write_solution
-from mpvrp_cc.paths import WITH_CHANGEOVER_INSTANCES_DIR
+from common.paths import WITH_CHANGEOVER_INSTANCES_DIR
+from lp1.io.sol import write_solution
+from lp1.schemas import MPVRPInstance, MPVRPNode, MilpSolution
 
 TIME_LIMIT = 190
 EPSILON = 1e-6
 
 
-@dataclass(frozen=True)
-class MilpSolution:
-    objective: float
-    best_bound: float
-    mip_gap: float
-    node_count: int
-    solver_runtime: float
-    status: int
-    routes: list[dict]
-
-
-def _distance(a: MPVRPNode, b: MPVRPNode) -> float:
+def _distance(a: MPVRPNode, b: MPVRPNode) -> int:
     """Return the integer distance prescribed by the instance format."""
-    return float(round(a.distance(b)))
+    return int(round(a.distance(b)))
 
 
 def _maximum_uniform_trip_bound(instance: MPVRPInstance) -> int:
@@ -423,5 +412,5 @@ if __name__ == "__main__":
         write_solution(
             instance=instance,
             routes=sol.routes,
-            resolution_time=end_time - start_time
+            resolution_time=sol.solver_runtime
         )

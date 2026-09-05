@@ -7,16 +7,17 @@ import uuid
 from pathlib import Path
 import numpy as np
 
-from mpvrp_cc.cli.validate_instance import log_report, verify_instance
-from mpvrp_cc.generation.instance_file_io import existing_instance_codes, write_instance
-from mpvrp_cc.generation.config import DEFAULT_OUTPUT_DIR, EPSILON, GenerationConfig, InstanceData
-from mpvrp_cc.generation.validation import (
+from tools.gen_io import existing_instance_codes, write_instance
+from tools.gen_data import DEFAULT_OUTPUT_DIR, EPSILON, GenerationConfig, InstanceData
+from tools.validation import (
+    log_report,
     maximum_station_product_delivery,
     validate_generation_config,
     validate_instance_data,
+    verify_instance,
 )
 
-LOGGER = logging.getLogger("mpvrp_cc.instance_generator")
+LOGGER = logging.getLogger("tools.gen")
 
 # Define cost ranges for product changeover operations.  The low level is kept
 # for explicit sensitivity/control instances, but is not sampled by the main

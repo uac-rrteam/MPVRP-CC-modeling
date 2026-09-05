@@ -4,7 +4,7 @@ import argparse
 import shutil
 from pathlib import Path
 
-from mpvrp_cc.paths import WITH_CHANGEOVER_INSTANCES_DIR, WITHOUT_CHANGEOVER_INSTANCES_DIR
+from common.paths import WITH_CHANGEOVER_INSTANCES_DIR, WITHOUT_CHANGEOVER_INSTANCES_DIR
 
 
 def zero_changeover_costs(source: Path, destination: Path, force: bool = False) -> Path:

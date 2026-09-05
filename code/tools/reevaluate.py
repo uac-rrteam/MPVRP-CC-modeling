@@ -4,8 +4,8 @@ import argparse
 import re
 from pathlib import Path
 
-from mpvrp_cc.io.instance_solution_io import MPVRPInstance
-from mpvrp_cc.paths import (
+from lp1.schemas import MPVRPInstance
+from common.paths import (
     REEVALUATED_CHANGEOVER_SOLUTIONS_DIR,
     WITH_CHANGEOVER_INSTANCES_DIR,
 )
