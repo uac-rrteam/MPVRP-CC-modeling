@@ -18,7 +18,7 @@ from tools.gen import (
     _generate_transition_costs,
     generate_instance_data,
 )
-from tools.gen_data import GenerationConfig, VerificationReport
+from tools.schemas import GenerationConfig, VerificationReport
 from tools.gen_io import load_instance_file, write_instance
 from tools.validation import (
     _maximum_uniform_trip_bound,

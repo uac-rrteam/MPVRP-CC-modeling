@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 
 from tools.gen_io import existing_instance_codes, write_instance
-from tools.gen_data import DEFAULT_OUTPUT_DIR, EPSILON, GenerationConfig, InstanceData
+from tools.schemas import DEFAULT_OUTPUT_DIR, EPSILON, GenerationConfig, InstanceData
 from tools.validation import (
     log_report,
     maximum_station_product_delivery,

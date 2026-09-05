@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 
 from tools.gen import configure_logging, generate
-from tools.gen_data import GenerationConfig
+from tools.schemas import GenerationConfig
 from common.paths import WITH_CHANGEOVER_INSTANCES_DIR
 
 LOGGER = logging.getLogger("tools.benchmark")

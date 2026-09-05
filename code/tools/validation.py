@@ -7,7 +7,7 @@ from pathlib import Path
 
 import numpy as np
 
-from tools.gen_data import (
+from tools.schemas import (
     EPSILON, GenerationConfig, InstanceData, ParsedInstance, VerificationReport
 )
 from lp1.schemas import MPVRPInstance

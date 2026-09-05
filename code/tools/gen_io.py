@@ -5,7 +5,7 @@ from pathlib import Path
 
 import numpy as np
 
-from tools.gen_data import EPSILON, InstanceData, ParsedInstance, VerificationReport
+from tools.schemas import EPSILON, InstanceData, ParsedInstance, VerificationReport
 
 INSTANCE_NAME_RE = re.compile(r"^MPVRP_(.+?)_s\d+_d\d+_p\d+\.dat$")
 UUID_RE = re.compile(
