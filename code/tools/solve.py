@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import argparse
 import csv
+import importlib
 import logging
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 from gurobipy import GRB
@@ -13,10 +15,10 @@ from lp1.io.sol import write_solution
 from lp1.model import solve_milp
 from lp1.schemas import MPVRPInstance
 from common.paths import (
+	LP1_SOLUTIONS_DIR,
+	LP2_SOLUTIONS_DIR,
 	WITH_CHANGEOVER_INSTANCES_DIR,
-	WITH_CHANGEOVER_SOLUTIONS_DIR,
 	WITHOUT_CHANGEOVER_INSTANCES_DIR,
-	WITHOUT_CHANGEOVER_SOLUTIONS_DIR,
 )
 
 LOGGER = logging.getLogger("tools.solve")
@@ -24,9 +26,21 @@ DEFAULT_TIME_LIMIT = 190
 
 
 SCENARIO_DIRECTORIES = {
-	"with_changeover_costs": (WITH_CHANGEOVER_INSTANCES_DIR, WITH_CHANGEOVER_SOLUTIONS_DIR),
-	"without_changeover_costs": (WITHOUT_CHANGEOVER_INSTANCES_DIR, WITHOUT_CHANGEOVER_SOLUTIONS_DIR),
+	"with_changeover_costs": WITH_CHANGEOVER_INSTANCES_DIR,
+	"without_changeover_costs": WITHOUT_CHANGEOVER_INSTANCES_DIR,
 }
+
+METHOD_SOLUTIONS_DIRECTORIES = {
+	1: LP1_SOLUTIONS_DIR,
+	2: LP2_SOLUTIONS_DIR,
+}
+
+
+def _solver_for_method(method: int) -> Callable[..., object]:
+	"""Return the solver function for the selected LP formulation."""
+	if method == 1:
+		return solve_milp
+	return importlib.import_module(f"lp{method}.model").solve_milp
 
 
 def _solution_path(instance: MPVRPInstance, solutions_dir: Path) -> Path:
@@ -55,6 +69,7 @@ def _load_manifest(manifest_path: Path) -> list[dict[str, str]]:
 
 def solve_dataset(args: argparse.Namespace) -> Path:
 	"""Solve every manifest entry and record a CSV report."""
+	solver = _solver_for_method(getattr(args, "method", 1))
 	manifest_path = args.manifest
 	if not manifest_path.exists():
 		raise FileNotFoundError(f"Manifest not found: {manifest_path}")
@@ -88,7 +103,7 @@ def solve_dataset(args: argparse.Namespace) -> Path:
 
 		try:
 			instance = MPVRPInstance.read(instance_path)
-			solution = solve_milp(instance, time_limit=args.time_limit, output=args.verbose)
+			solution = solver(instance, time_limit=args.time_limit, output=args.verbose)
 
 			if solution is None:
 				message = f"No incumbent solution within {args.time_limit} seconds or model infeasible."
@@ -159,6 +174,13 @@ def solve_dataset(args: argparse.Namespace) -> Path:
 def parse_args() -> argparse.Namespace:
 	parser = argparse.ArgumentParser(description="Solve the 100-instance benchmark set with a fixed time limit.")
 	parser.add_argument(
+		"--method",
+		type=int,
+		choices=(1, 2),
+		default=1,
+		help="LP formulation to use (1 or 2).",
+	)
+	parser.add_argument(
 		"--scenario",
 		choices=tuple(SCENARIO_DIRECTORIES),
 		default="with_changeover_costs",
@@ -171,7 +193,8 @@ def parse_args() -> argparse.Namespace:
 	parser.add_argument("-q", "--quiet", action="store_true", help="Only log warnings and errors.")
 	parser.add_argument("--verbose", action="store_true", help="Enable debug logging and Gurobi output.")
 	args = parser.parse_args()
-	instances_dir, default_solutions_dir = SCENARIO_DIRECTORIES[args.scenario]
+	instances_dir = SCENARIO_DIRECTORIES[args.scenario]
+	default_solutions_dir = METHOD_SOLUTIONS_DIRECTORIES[args.method] / args.scenario
 	args.manifest = args.manifest or instances_dir / "manifest.csv"
 	args.solutions_dir = args.solutions_dir or default_solutions_dir
 	args.report = args.report or default_solutions_dir / "benchmark_report.csv"

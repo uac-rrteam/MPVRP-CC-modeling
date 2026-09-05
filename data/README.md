@@ -13,13 +13,10 @@ mpvrp-prepare-scenarios --force
 
 ## Solutions
 
-Solutions and reports are separated by experimental scenario:
-
-- `solutions/with_changeover_costs/`
-- `solutions/without_changeover_costs/`
+Depending on the LP model used, the solutions may be in `solutions/lp*` with the same subfolder structure as the instances. The `with_changeover_costs/` and `without_changeover_costs/` folders are kept separate.
 
 This separation prevents one experiment from overwriting the results of the other.
 
-`solutions/without_changeover_costs/reevaluated_with_changeover_costs/` contains
+`without_changeover_costs/reevaluated_with_changeover_costs/` contains
 optional copies of zero-cost solutions repriced afterward with the original
 transition matrix. Routes and delivered quantities remain unchanged.
