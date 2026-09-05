@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from math import ceil
+
 from gurobipy import GRB, Model, quicksum
 
 from mpvrp_cc.io.instance_solution_io import MPVRPInstance, MPVRPNode, write_solution
 from mpvrp_cc.paths import WITH_CHANGEOVER_INSTANCES_DIR
 
-TIME_LIMIT = 60
+TIME_LIMIT = 190
 EPSILON = 1e-6
 
 
@@ -16,7 +18,7 @@ class MilpSolution:
     objective: float
     best_bound: float
     mip_gap: float
-    node_count: float
+    node_count: int
     solver_runtime: float
     status: int
     routes: list[dict]
@@ -27,20 +29,14 @@ def _distance(a: MPVRPNode, b: MPVRPNode) -> float:
     return float(round(a.distance(b)))
 
 
-def _safe_uniform_trip_bound(instance: MPVRPInstance) -> int:
-    """Return a valid per-vehicle horizon for the documented route rules.
-
-    Every useful trip makes a positive delivery to at least one station-product
-    pair.  A vehicle may serve each such pair at most once, so the number of
-    positive-demand pairs is a safe upper bound on that vehicle's trip count.
-    Unlike an aggregate-capacity estimate, this remains valid when stocks are
-    fragmented over several depots.
-    """
-    return sum(
-        demand > EPSILON
-        for station in instance.stations
-        for demand in station.demand
-    )
+def _maximum_uniform_trip_bound(instance: MPVRPInstance) -> int:
+    total_demand = sum(sum(station.demand) for station in instance.stations)
+    fleet_capacity = sum(vehicle.capacity for vehicle in instance.vehicles)
+    if total_demand <= EPSILON:
+        return 0
+    if fleet_capacity <= EPSILON:
+        raise ValueError("The fleet has no usable capacity.")
+    return max(ceil(total_demand / fleet_capacity) + 1, instance.n_prods)
 
 
 def _validate_trip_bound(instance: MPVRPInstance, max_trips_per_vehicle: int) -> None:
@@ -50,11 +46,11 @@ def _validate_trip_bound(instance: MPVRPInstance, max_trips_per_vehicle: int) ->
     total_demand = sum(sum(station.demand) for station in instance.stations)
     total_capacity = max_trips_per_vehicle * sum(vehicle.capacity for vehicle in instance.vehicles)
     if total_capacity + EPSILON < total_demand:
-        safe_bound = _safe_uniform_trip_bound(instance)
+        configured_bound = _maximum_uniform_trip_bound(instance)
         raise ValueError(
             "max_trips_per_vehicle is too small to satisfy total demand: "
             f"capacity={total_capacity:.1f}, demand={total_demand:.1f}. "
-            f"The formulation's safe horizon is {safe_bound} trips per vehicle."
+            f"The default horizon is {configured_bound} trips per vehicle."
         )
 
 
@@ -67,18 +63,25 @@ def solve_milp(
     """
     Solve a bounded-trip MILP for MPVRP-CC.
 
-    Each vehicle is allowed up to ``max_trips_per_vehicle`` mini-routes. A
-    mini-route starts at one depot, carries exactly one product, and visits one
-    or more stations.  A non-final trip ends at the depot where the next trip
-    loads; the final trip returns directly to the vehicle's home garage.
-    Consecutive mini-routes pay product changeover costs.
+    Parameters
+    ----------
+    instance : MPVRPInstance
+        The MPVRP-CC instance to solve.
+    max_trips_per_vehicle : int | None, optional
+        The maximum number of trips allowed per vehicle. If None, the default
+        maximum uniform trip bound is used.
+    time_limit : int, optional
+        The time limit for the solver in seconds. Default is 190 seconds.
+    output : bool, optional
+        If True, enables Gurobi output. Default is True.
 
-    With the default horizon this is an exact finite formulation. Supplying a
-    smaller ``max_trips_per_vehicle`` deliberately restricts the feasible set;
-    it should only be done when that tighter bound is known to be valid.
+    Returns
+    -------
+    MilpSolution | None
+        The solution of the MILP, or None if no feasible solution is found.
     """
     if max_trips_per_vehicle is None:
-        max_trips_per_vehicle = _safe_uniform_trip_bound(instance)
+        max_trips_per_vehicle = _maximum_uniform_trip_bound(instance)
 
     _validate_trip_bound(instance, max_trips_per_vehicle)
 
@@ -119,8 +122,8 @@ def solve_milp(
     start_depot = m.addVars(vehicles, trips, depots, vtype=GRB.BINARY, name="start_depot")
     visit = m.addVars(vehicles, trips, stations, vtype=GRB.BINARY, name="visit")
     visit_product = m.addVars(vehicles, trips, stations, products, vtype=GRB.BINARY, name="visit_product")
-    quantity = m.addVars(vehicles, trips, stations, products, lb=0.0, vtype=GRB.CONTINUOUS, name="quantity")
-    depot_load = m.addVars(vehicles, trips, depots, products, lb=0.0, vtype=GRB.CONTINUOUS, name="depot_load")
+    quantity = m.addVars(vehicles, trips, stations, products, lb=0, vtype=GRB.INTEGER, name="quantity")
+    depot_load = m.addVars(vehicles, trips, depots, products, lb=0, vtype=GRB.INTEGER, name="depot_load")
     arc = m.addVars(
         ((k, t, i, j) for k in vehicles for t in trips for i, j in allowed_arcs),
         vtype=GRB.BINARY,
@@ -140,27 +143,32 @@ def solve_milp(
     # Trip activation and sequencing.
     for k in vehicles:
         for t in trips:
+            # Each trip must have exactly one product and one start depot if it is active.
             m.addConstr(quicksum(product[k, t, p] for p in products) == active[k, t], name=f"one_product[{k},{t}]")
             m.addConstr(quicksum(start_depot[k, t, d] for d in depots) == active[k, t],
                         name=f"one_start_depot[{k},{t}]")
             if t > 0:
+                # Enforce that trips are ordered: if trip t is active, then trip t-1 must also be active.
                 m.addConstr(active[k, t] <= active[k, t - 1], name=f"ordered_trips[{k},{t}]")
 
             if t < max_trips_per_vehicle - 1:
+                # if trip t is active and trip t+1 is not active, then trip t is the last trip for vehicle k.
                 m.addConstr(last_trip[k, t] == active[k, t] - active[k, t + 1], name=f"last_trip[{k},{t}]")
             else:
+                # the last trip for vehicle k is the last trip in the horizon if it is active.
                 m.addConstr(last_trip[k, t] == active[k, t], name=f"last_trip[{k},{t}]")
 
     # Route flow for each mini-route.
     for k in vehicles:
         for t in trips:
             for d in depots:
+                # If trip t starts at depot d, then the vehicle must leave depot d and enter the next trip's start depot (if any).
                 m.addConstr(quicksum(arc[k, t, d, j] for j in station_nodes) == start_depot[k, t, d],
                             name=f"leave_start_depot[{k},{t},{d}]")
                 next_start = start_depot[k, t + 1, d] if t < max_trips_per_vehicle - 1 else 0
                 m.addConstr(quicksum(arc[k, t, i, d] for i in station_nodes) == next_start,
                             name=f"enter_next_start_depot[{k},{t},{d}]")
-
+            # Each trip must return to the garage from exactly one station if it is the last trip for vehicle k.
             m.addConstr(
                 quicksum(garage_return[k, t, s] for s in stations) == last_trip[k, t],
                 name=f"return_to_garage[{k},{t}]",
@@ -194,8 +202,8 @@ def solve_milp(
                     # Instance quantities use integer units.  Requiring at least
                     # one unit prevents zero-load visits and artificial trips
                     # inserted solely to alter the changeover sequence.
-                    m.addConstr(quantity[k, t, s, p] >= visit_product[k, t, s, p],
-                                name=f"positive_delivery[{k},{t},{s},{p}]")
+                    # m.addConstr(quantity[k, t, s, p] >= visit_product[k, t, s, p],
+                    #             name=f"positive_delivery[{k},{t},{s},{p}]")
 
     for k in vehicles:
         for s in stations:
@@ -212,7 +220,7 @@ def solve_milp(
             if demand <= EPSILON:
                 for k in vehicles:
                     for t in trips:
-                        m.addConstr(quantity[k, t, s, p] == 0.0, name=f"zero_quantity[{k},{t},{s},{p}]")
+                        m.addConstr(quantity[k, t, s, p] == 0, name=f"zero_quantity[{k},{t},{s},{p}]")
                 continue
 
             m.addConstr(
@@ -403,12 +411,12 @@ def solve_milp(
 
 
 if __name__ == "__main__":
-    filename = WITH_CHANGEOVER_INSTANCES_DIR / "MPVRP_002_s3_d6_p3.dat"
+    filename = WITH_CHANGEOVER_INSTANCES_DIR / "MPVRP_003_s37_d2_p2.dat"
     instance = MPVRPInstance.read(filename)
     start_time = time.perf_counter()
     sol = solve_milp(
         instance= instance,
-        time_limit=190
+        time_limit=300
     )
     end_time = time.perf_counter()
     if sol:

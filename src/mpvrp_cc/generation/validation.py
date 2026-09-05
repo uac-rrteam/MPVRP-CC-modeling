@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from math import ceil
+
 import numpy as np
 
 from mpvrp_cc.generation.config import (
@@ -339,16 +341,24 @@ def _check_nonnegative(name: str, values: np.ndarray, report: VerificationReport
 
 
 def _check_default_trip_bound_scenario(data: InstanceData, report: VerificationReport) -> None:
-    """Report the solver's safe default per-vehicle trip horizon."""
-    trip_bound = _safe_uniform_trip_bound(data.stations[:, 3:])
-    report.info(f"Safe uniform trip bound used by the MILP solver: {trip_bound}.")
+    """Report the solver's configured default per-vehicle trip horizon."""
+    total_demand = float(data.stations[:, 3:].sum())
+    fleet_capacity = float(data.vehicles[:, 1].sum())
+    trip_bound = _maximum_uniform_trip_bound(total_demand, fleet_capacity, data.nb_products)
+    report.info(f"Maximum uniform trip bound used by the MILP solver: {trip_bound}.")
 
 
-def _safe_uniform_trip_bound(
-    station_demands: np.ndarray,
+def _maximum_uniform_trip_bound(
+    total_demand: float,
+    fleet_capacity: float,
+    product_count: int,
 ) -> int:
-    """Count positive station-product pairs, as the MILP solver does."""
-    return int(np.count_nonzero(station_demands > EPSILON))
+    """Return the same aggregate-capacity trip bound as the MILP solver."""
+    if total_demand <= EPSILON:
+        return 0
+    if fleet_capacity <= EPSILON:
+        raise ValueError("The fleet has no usable capacity.")
+    return max(ceil(total_demand / fleet_capacity) + 1, product_count)
 
 
 def _check_geographic_overlap(data: InstanceData, report: VerificationReport) -> None:
