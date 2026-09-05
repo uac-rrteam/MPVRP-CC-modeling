@@ -152,40 +152,34 @@ def solve_milp(
     order = model.addVars(vehicles, trips, requests, lb=0, ub=n_request_nodes, vtype=GRB.CONTINUOUS, name="order")
     last_trip = model.addVars(vehicles, trips, vtype=GRB.BINARY, name="last_trip")
     garage_return = model.addVars(vehicles, trips, requests, vtype=GRB.BINARY, name="garage_return")
-    change = model.addVars(vehicles, range(max_trips_per_vehicle - 1), products, products, vtype=GRB.BINARY, name="change")
+    transition_trips = range(max_trips_per_vehicle - 1)
+    change = model.addVars(vehicles, transition_trips, products, products,
+                           vtype=GRB.BINARY, name="change")
 
     # Active trips form a prefix. Selecting one depot-product node fixes the
     # trip product, so no separate loading-depot/product compatibility is needed.
     for k in vehicles:
         for t in trips:
-            model.addConstr(quicksum(start[k, t, d] for d in depot_products) == active[k, t],
-                name=f"one_start[{k},{t}]",
-            )
+            selected_starts = quicksum(start[k, t, d] for d in depot_products)
+            model.addConstr(selected_starts == active[k, t], name=f"one_start[{k},{t}]")
+
             for p in products:
-                model.addConstr(
-                    product[k, t, p]
-                    == quicksum(
-                        start[k, t, d]
-                        for d in depot_products
-                        if instance.depot_products[d].product_id == p
-                    ),
-                    name=f"selected_product[{k},{t},{p}]",
+                matching_starts = quicksum(
+                    start[k, t, d] for d in depot_products
+                    if instance.depot_products[d].product_id == p
                 )
+                model.addConstr(product[k, t, p] == matching_starts, name=f"selected_product[{k},{t},{p}]")
+
             if t > 0:
-                model.addConstr(
-                    active[k, t] <= active[k, t - 1],
-                    name=f"ordered_trips[{k},{t}]",
-                )
+                model.addConstr(active[k, t] <= active[k, t - 1], name=f"ordered_trips[{k},{t}]")
+
             if t < max_trips_per_vehicle - 1:
                 model.addConstr(
                     last_trip[k, t] == active[k, t] - active[k, t + 1],
                     name=f"last_trip[{k},{t}]",
                 )
             else:
-                model.addConstr(
-                    last_trip[k, t] == active[k, t],
-                    name=f"last_trip[{k},{t}]",
-                )
+                model.addConstr(last_trip[k, t] == active[k, t], name=f"last_trip[{k},{t}]")
 
     # Each active mini-route begins at its selected depot-product node and
     # either enters the next selected node or returns home after its last request.
@@ -193,40 +187,27 @@ def solve_milp(
         for t in trips:
             for d in depot_products:
                 depot_node = instance.depot_products[d].global_id
-                model.addConstr(
-                    quicksum(arc[k, t, depot_node, j] for j in outgoing[depot_node])
-                    == start[k, t, d],
-                    name=f"leave_start[{k},{t},{d}]",
-                )
-                next_start = start[k, t + 1, d] if t + 1 < max_trips_per_vehicle else 0
-                model.addConstr(
-                    quicksum(arc[k, t, i, depot_node] for i in incoming[depot_node])
-                    == next_start,
-                    name=f"enter_next_start[{k},{t},{d}]",
-                )
+                departures = quicksum(arc[k, t, depot_node, j] for j in outgoing[depot_node])
+                model.addConstr(departures == start[k, t, d], name=f"leave_start[{k},{t},{d}]")
 
-            model.addConstr(
-                quicksum(garage_return[k, t, r] for r in requests)
-                == last_trip[k, t],
-                name=f"return_home[{k},{t}]",
-            )
+                next_start = start[k, t + 1, d] if t + 1 < max_trips_per_vehicle else 0
+                arrivals = quicksum(arc[k, t, i, depot_node] for i in incoming[depot_node])
+                model.addConstr(arrivals == next_start, name=f"enter_next_start[{k},{t},{d}]")
+
+            returns_home = quicksum(garage_return[k, t, r] for r in requests)
+            model.addConstr(returns_home == last_trip[k, t], name=f"return_home[{k},{t}]")
 
             for r in requests:
                 node = request_node(r)
+                arrivals = quicksum(arc[k, t, i, node] for i in incoming[node])
+                departures = quicksum(arc[k, t, node, j] for j in outgoing[node])
+                model.addConstr(arrivals == visit[k, t, r], name=f"request_in[{k},{t},{r}]")
                 model.addConstr(
-                    quicksum(arc[k, t, i, node] for i in incoming[node])
-                    == visit[k, t, r],
-                    name=f"request_in[{k},{t},{r}]",
-                )
-                model.addConstr(
-                    quicksum(arc[k, t, node, j] for j in outgoing[node])
-                    + garage_return[k, t, r]
-                    == visit[k, t, r],
+                    departures + garage_return[k, t, r] == visit[k, t, r],
                     name=f"request_out[{k},{t},{r}]",
                 )
                 model.addConstr(
-                    visit[k, t, r]
-                    <= product[k, t, instance.requests[r].product_id],
+                    visit[k, t, r] <= product[k, t, instance.requests[r].product_id],
                     name=f"request_product[{k},{t},{r}]",
                 )
 
@@ -234,52 +215,39 @@ def solve_milp(
     # and a vehicle can serve a request at most once over its complete schedule.
     for r in requests:
         demand = instance.requests[r].demand
-        model.addConstr(
-            quicksum(quantity[k, t, r] for k in vehicles for t in trips) == demand,
-            name=f"demand[{r}]",
-        )
+        delivered = quicksum(quantity[k, t, r] for k in vehicles for t in trips)
+        model.addConstr(delivered == demand, name=f"demand[{r}]")
+
         for k in vehicles:
-            model.addConstr(
-                quicksum(visit[k, t, r] for t in trips) <= 1,
-                name=f"one_visit_per_vehicle_request[{k},{r}]",
-            )
+            vehicle_visits = quicksum(visit[k, t, r] for t in trips)
+            model.addConstr(vehicle_visits <= 1, name=f"one_visit_per_vehicle_request[{k},{r}]")
+
             for t in trips:
-                # model.addConstr(
-                #    quantity[k, t, r] >= visit[k, t, r],
-                #    name=f"positive_delivery[{k},{t},{r}]",
-                # )
-                model.addConstr(
-                    quantity[k, t, r] <= demand * visit[k, t, r],
-                    name=f"quantity_visit[{k},{t},{r}]",
-                )
+                # model.addConstr(quantity[k, t, r] >= visit[k, t, r],
+                #                 name=f"positive_delivery[{k},{t},{r}]")
+                model.addConstr(quantity[k, t, r] <= demand * visit[k, t, r],
+                                name=f"quantity_visit[{k},{t},{r}]")
 
     for k in vehicles:
         capacity = instance.vehicles[k].capacity
         for t in trips:
             trip_quantity = quicksum(quantity[k, t, r] for r in requests)
-            model.addConstr(
-                trip_quantity <= capacity * active[k, t],
-                name=f"capacity[{k},{t}]",
-            )
+            model.addConstr(trip_quantity <= capacity * active[k, t], name=f"capacity[{k},{t}]")
+
             for d in depot_products:
+                model.addConstr(load[k, t, d] <= capacity * start[k, t, d],
+                                name=f"load_start[{k},{t},{d}]")
+                model.addConstr(load[k, t, d] <= trip_quantity,
+                                name=f"load_quantity_ub[{k},{t},{d}]")
                 model.addConstr(
-                    load[k, t, d] <= capacity * start[k, t, d],
-                    name=f"load_start[{k},{t},{d}]",
-                )
-                model.addConstr(
-                    load[k, t, d] <= trip_quantity,
-                    name=f"load_quantity_ub[{k},{t},{d}]",
-                )
-                model.addConstr(
-                    load[k, t, d]
-                    >= trip_quantity - capacity * (1 - start[k, t, d]),
+                    load[k, t, d] >= trip_quantity - capacity * (1 - start[k, t, d]),
                     name=f"load_quantity_lb[{k},{t},{d}]",
                 )
 
     for d in depot_products:
+        total_load = quicksum(load[k, t, d] for k in vehicles for t in trips)
         model.addConstr(
-            quicksum(load[k, t, d] for k in vehicles for t in trips)
-            <= instance.depot_products[d].stock,
+            total_load <= instance.depot_products[d].stock,
             name=f"stock[{d}]",
         )
 
@@ -287,44 +255,33 @@ def solve_milp(
     for k in vehicles:
         for t in trips:
             for r in requests:
-                model.addConstr(
-                    order[k, t, r] <= n_request_nodes * visit[k, t, r],
-                    name=f"order_ub[{k},{t},{r}]",
-                )
-                model.addConstr(
-                    order[k, t, r] >= visit[k, t, r],
-                    name=f"order_lb[{k},{t},{r}]",
-                )
+                model.addConstr(order[k, t, r] <= n_request_nodes * visit[k, t, r],
+                                name=f"order_ub[{k},{t},{r}]")
+                model.addConstr(order[k, t, r] >= visit[k, t, r], name=f"order_lb[{k},{t},{r}]")
+
             for i, j in request_request_arcs:
                 r_i = request_index(i)
                 r_j = request_index(j)
                 model.addConstr(
-                    order[k, t, r_i]
-                    - order[k, t, r_j]
-                    + n_request_nodes * arc[k, t, i, j]
-                    <= n_request_nodes - 1,
+                    order[k, t, r_i] - order[k, t, r_j]
+                    + n_request_nodes * arc[k, t, i, j] <= n_request_nodes - 1,
                     name=f"mtz[{k},{t},{r_i},{r_j}]",
                 )
 
     for k in vehicles:
-        for t in range(max_trips_per_vehicle - 1):
+        for t in transition_trips:
             for previous_product in products:
                 for next_product in products:
                     transition = change[k, t, previous_product, next_product]
+                    suffix = f"[{k},{t},{previous_product},{next_product}]"
+                    model.addConstr(transition <= product[k, t, previous_product],
+                                    name=f"change_previous{suffix}")
+                    model.addConstr(transition <= product[k, t + 1, next_product],
+                                    name=f"change_next{suffix}")
                     model.addConstr(
-                        transition <= product[k, t, previous_product],
-                        name=f"change_previous[{k},{t},{previous_product},{next_product}]",
-                    )
-                    model.addConstr(
-                        transition <= product[k, t + 1, next_product],
-                        name=f"change_next[{k},{t},{previous_product},{next_product}]",
-                    )
-                    model.addConstr(
-                        transition
-                        >= product[k, t, previous_product]
-                        + product[k, t + 1, next_product]
-                        - 1,
-                        name=f"change_and[{k},{t},{previous_product},{next_product}]",
+                        transition >= product[k, t, previous_product]
+                        + product[k, t + 1, next_product] - 1,
+                        name=f"change_and{suffix}",
                     )
 
     travel_cost = quicksum(
@@ -352,20 +309,20 @@ def solve_milp(
         for k in vehicles
         for p in products
     )
-    subsequent_changeover_cost = quicksum(
-        instance.changeover_cost[previous_product - 1][next_product - 1]
-        * change[k, t, previous_product, next_product]
+    trip_changeover_cost = quicksum(
+        instance.changeover_cost[p1 - 1][p2 - 1]
+        * change[k, t, p1, p2]
         for k in vehicles
-        for t in range(max_trips_per_vehicle - 1)
-        for previous_product in products
-        for next_product in products
+        for t in transition_trips
+        for p1 in products
+        for p2 in products
     )
     model.setObjective(
         travel_cost
         + garage_start_cost
         + garage_return_cost
         + initial_changeover_cost
-        + subsequent_changeover_cost,
+        + trip_changeover_cost,
         GRB.MINIMIZE,
     )
 

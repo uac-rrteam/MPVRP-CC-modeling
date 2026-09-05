@@ -55,10 +55,10 @@ class Vehicle:
 
 @dataclass(frozen=True)
 class MilpSolution:
-    objective: int
+    objective: float
     best_bound: float
     mip_gap: float
-    node_count: int
+    node_count: float
     solver_runtime: float
     status: int
     routes: list[dict]
