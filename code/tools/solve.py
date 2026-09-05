@@ -7,6 +7,7 @@ import logging
 import time
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from gurobipy import GRB
 
@@ -43,7 +44,21 @@ def _solver_for_method(method: int) -> Callable[..., object]:
 	return importlib.import_module(f"lp{method}.model").solve_milp
 
 
-def _solution_path(instance: MPVRPInstance, solutions_dir: Path) -> Path:
+def _instance_class_for_method(method: int) -> type:
+	"""Return the instance schema used by the selected formulation."""
+	if method == 1:
+		return MPVRPInstance
+	return importlib.import_module(f"lp{method}.schemas").MPVRPInstance
+
+
+def _solution_writer_for_method(method: int) -> Callable[..., Path]:
+	"""Return the solution writer used by the selected formulation."""
+	if method == 1:
+		return write_solution
+	return importlib.import_module(f"lp{method}.io.sol").write_solution
+
+
+def _solution_path(instance: Any, solutions_dir: Path) -> Path:
 	return solutions_dir / (
 		f"Sol_{instance.instance_id}"
 		f"_s{instance.n_stations}_d{instance.n_depots}_p{instance.n_prods}.dat"
@@ -69,7 +84,10 @@ def _load_manifest(manifest_path: Path) -> list[dict[str, str]]:
 
 def solve_dataset(args: argparse.Namespace) -> Path:
 	"""Solve every manifest entry and record a CSV report."""
-	solver = _solver_for_method(getattr(args, "method", 1))
+	method = getattr(args, "method", 1)
+	solver = _solver_for_method(method)
+	instance_class = _instance_class_for_method(method)
+	solution_writer = _solution_writer_for_method(method)
 	manifest_path = args.manifest
 	if not manifest_path.exists():
 		raise FileNotFoundError(f"Manifest not found: {manifest_path}")
@@ -102,7 +120,7 @@ def solve_dataset(args: argparse.Namespace) -> Path:
 		message = ""
 
 		try:
-			instance = MPVRPInstance.read(instance_path)
+			instance = instance_class.read(instance_path)
 			solution = solver(instance, time_limit=args.time_limit, output=args.verbose)
 
 			if solution is None:
@@ -120,7 +138,7 @@ def solve_dataset(args: argparse.Namespace) -> Path:
 				solver_runtime = f"{solution.solver_runtime:.6f}"
 				elapsed = time.perf_counter() - start
 				solution_path = _solution_path(instance, args.solutions_dir)
-				write_solution(instance=instance, routes=solution.routes, filename=solution_path, resolution_time=elapsed)
+				solution_writer(instance=instance, routes=solution.routes, filename=solution_path, resolution_time=elapsed)
 				solution_file = str(solution_path)
 				solved += 1
 				LOGGER.info("Solved %s (%s)", instance_path.name, solver_status)
