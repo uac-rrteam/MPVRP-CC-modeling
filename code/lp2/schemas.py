@@ -21,6 +21,9 @@ class Depot:
     y: int
     stocks: list[int]
 
+    def distance(self, other: Station | MPVRPNode) -> float:
+        return math.hypot(self.x - other.x, self.y - other.y)
+
 
 @dataclass(frozen=True)
 class Station:
@@ -30,6 +33,9 @@ class Station:
     x: int
     y: int
     demand: list[int]
+
+    def distance(self, other: Depot | MPVRPNode) -> float:
+        return math.hypot(self.x - other.x, self.y - other.y)
 
 
 @dataclass(frozen=True)
@@ -109,6 +115,17 @@ class Vehicle:
     capacity: int
     start_g: GarageNode | None
     init_prod: int
+
+
+@dataclass(frozen=True)
+class MilpSolution:
+    objective: float
+    best_bound: float
+    mip_gap: float
+    node_count: float
+    solver_runtime: float
+    status: int
+    routes: list[dict]
 
 
 class MPVRPInstance:
