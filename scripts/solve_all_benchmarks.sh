@@ -58,12 +58,12 @@ run_stage() {
 
 cd -- "$PROJECT_ROOT"
 
-run_stage 1 1 with_changeover_costs "$BLUE" \
-    "LP1 — instances with changeover costs"
+# run_stage 1 1 with_changeover_costs "$BLUE" \
+#     "LP1 — instances with changeover costs"
 run_stage 2 2 with_changeover_costs "$MAGENTA" \
     "LP2 — instances with changeover costs"
-run_stage 3 1 without_changeover_costs "$YELLOW" \
-    "LP1 — instances without changeover costs"
+# run_stage 3 1 without_changeover_costs "$YELLOW" \
+#     "LP1 — instances without changeover costs"
 run_stage 4 2 without_changeover_costs "$CYAN" \
     "LP2 — instances without changeover costs"
 
