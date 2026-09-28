@@ -51,11 +51,6 @@ def write_instance(data: InstanceData, filepath: Path, force: bool = False) -> P
     return filepath
 
 
-def _parse_number(token: str) -> int:
-    """Parse one strict integer instance token."""
-    return int(token)
-
-
 def _parse_numeric_row(
     line: str,
     expected: int,
@@ -67,12 +62,9 @@ def _parse_numeric_row(
         report.error(f"Line {line_number}: expected {expected} values, found {len(parts)}.")
         return None
     try:
-        values = [_parse_number(part) for part in parts]
+        values = [int(part) for part in parts]
     except ValueError as exc:
         report.error(f"Line {line_number}: non-numeric value ({exc}).")
-        return None
-    if not np.all(np.isfinite(values)):
-        report.error(f"Line {line_number}: values must be finite.")
         return None
     return values
 
@@ -114,11 +106,7 @@ def load_instance_file(filepath: Path, report: VerificationReport) -> ParsedInst
     params_values = _parse_numeric_row(params_line, 5, params_line_number, report)
     if params_values is None:
         return None
-    if any(abs(value - round(value)) > EPSILON for value in params_values):
-        report.error("Global parameters must be integers.")
-        return None
-
-    params = np.array([int(round(value)) for value in params_values], dtype=int)
+    params = np.array(params_values, dtype=int)
     nb_products, nb_depots, nb_garages, nb_stations, nb_vehicles = params.tolist()
     for name, count in {
         "products": nb_products,

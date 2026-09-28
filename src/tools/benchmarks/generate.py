@@ -3,16 +3,20 @@ from __future__ import annotations
 import argparse
 import csv
 import itertools
-import logging
+import json
+import os
+import tempfile
 from pathlib import Path
 
 import numpy as np
+from loguru import logger
 
-from tools.instances.generate import configure_logging, generate
+from tools.instances.generate import generate
 from tools.instances.models import GenerationConfig
+from tools.run_logging import configure_run_logging
 from paths import CHANGEOVER_INSTANCES_DIR
 
-LOGGER = logging.getLogger(__name__)
+LOGGER = logger
 MAX_GENERATION_ATTEMPTS = 50
 
 # Low changeover costs are reserved for separate sensitivity experiments.  The
@@ -119,6 +123,7 @@ def _build_generation_config(
         "stock_level": stock,
         "demand_probability": demand_probability,
         "coordinate_strategy": coordinate_strategy,
+        "instance_seed": config.seed,
     }
     return config, row
 
@@ -132,25 +137,27 @@ def _generate_instance_with_backtracking(
     """Generate one instance, retrying with fresh parameters when validation fails."""
     levels = initial_levels
     last_error: Exception | None = None
+    rejections: list[dict[str, object]] = []
 
     for attempt in range(1, MAX_GENERATION_ATTEMPTS + 1):
         if attempt > 1:
             levels = _random_level_combination(rng, initial_levels[0])
 
         config, row = _build_generation_config(rng, args, instance_id, levels)
-        preexisting_file = config.filepath.exists()
+        LOGGER.debug("Generation attempt {} for {}: seed={} levels={}", attempt, instance_id, config.seed, levels)
         try:
-            return generate(config), row
+            path = generate(config)
+            row["attempts"] = attempt
+            row["rejections"] = json.dumps(rejections, separators=(",", ":"))
+            return path, row
         except FileExistsError:
             raise
         except ValueError as exc:
             last_error = exc
-            if not preexisting_file and config.filepath.exists():
-                config.filepath.unlink()
-
+            rejections.append({"seed": config.seed, "levels": levels, "reason": str(exc)})
             if attempt < MAX_GENERATION_ATTEMPTS:
                 LOGGER.warning(
-                    "Backtracking %s after failed attempt %s/%s: %s",
+                    "Backtracking {} after failed attempt {}/{}: {}",
                     instance_id,
                     attempt,
                     MAX_GENERATION_ATTEMPTS,
@@ -169,27 +176,58 @@ def generate_dataset(args: argparse.Namespace) -> Path:
     rng = np.random.default_rng(args.seed)
     output_dir = args.output_dir
     output_dir.mkdir(parents=True, exist_ok=True)
-    manifest_path = output_dir / args.manifest
+    manifest_name = Path(args.manifest)
+    if manifest_name.name != args.manifest:
+        raise ValueError("--manifest must be a filename within --output-dir.")
+    manifest_path = output_dir / manifest_name
     level_combinations = _level_combinations(rng, args.count)
+    with tempfile.TemporaryDirectory(prefix=".mpvrp-batch-", dir=output_dir) as temporary_dir:
+        stage_dir = Path(temporary_dir)
+        staged_args = argparse.Namespace(**vars(args))
+        staged_args.output_dir = stage_dir
+        rows: list[dict[str, str | int | float]] = []
+        for offset, levels in enumerate(level_combinations):
+            instance_id = f"{args.start_id + offset:03d}"
+            path, row = _generate_instance_with_backtracking(rng, staged_args, instance_id, levels)
+            row["file"] = path.name
+            rows.append(row)
+            LOGGER.info("Staged {}/{}: {} (attempts={})", offset + 1, args.count, path.name, row.get("attempts", 1))
 
-    rows: list[dict[str, str | int | float]] = []
-    for offset, (changeover, capacity, demand, stock) in enumerate(level_combinations):
-        number = args.start_id + offset
-        instance_id = f"{number:03d}"
-        # The generator will adjust demand so the MILP trip horizon is at
-        # least the product count; these ranges keep the batch diverse without
-        # forcing obviously oversized fleets for tiny product sets.
-        path, row = _generate_instance_with_backtracking(rng, args, instance_id, (changeover, capacity, demand, stock))
-        row["file"] = path.name
-        rows.append(row)
-        LOGGER.info("Generated %s/%s: %s", offset + 1, args.count, path.name)
+        staged_manifest = stage_dir / manifest_name
+        with staged_manifest.open("w", newline="", encoding="utf-8") as file:
+            writer = csv.DictWriter(file, fieldnames=list(rows[0].keys()))
+            writer.writeheader()
+            writer.writerows(rows)
 
-    with manifest_path.open("w", newline="") as file:
-        writer = csv.DictWriter(file, fieldnames=list(rows[0].keys()))
-        writer.writeheader()
-        writer.writerows(rows)
+        targets = [(stage_dir / row["file"], output_dir / row["file"]) for row in rows]
+        targets.append((staged_manifest, manifest_path))
+        if not args.force:
+            existing = [str(target) for _, target in targets if target.exists()]
+            if existing:
+                raise FileExistsError(f"Output already exists: {', '.join(existing)}")
 
-    LOGGER.info("Wrote manifest: %s", manifest_path)
+        # Keep replaced files recoverable until the whole batch is committed.
+        backup_dir = stage_dir / "backup"
+        backup_dir.mkdir()
+        committed: list[Path] = []
+        backups: list[tuple[Path, Path]] = []
+        try:
+            for index, (staged, target) in enumerate(targets):
+                if target.exists():
+                    backup = backup_dir / str(index)
+                    os.replace(target, backup)
+                    backups.append((backup, target))
+                os.replace(staged, target)
+                committed.append(target)
+        except OSError:
+            for target in reversed(committed):
+                target.unlink()
+            for backup, target in reversed(backups):
+                os.replace(backup, target)
+            raise
+
+    LOGGER.info("Wrote manifest: {}", manifest_path)
+    LOGGER.info("Generation retries: {} across {} instances", sum(int(row.get("attempts", 1)) - 1 for row in rows), len(rows))
     return manifest_path
 
 
@@ -232,13 +270,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("-f", "--force", action="store_true", help="Overwrite existing instance files.")
     parser.add_argument("-q", "--quiet", action="store_true", help="Only log warnings and errors.")
     parser.add_argument("--verbose", action="store_true", help="Enable debug logging.")
+    parser.add_argument("--log-dir", type=Path, help="Directory for the per-run .log file.")
     return parser.parse_args()
 
 
 def main() -> int:
     """Run the benchmark dataset generation CLI."""
     args = parse_args()
-    configure_logging(verbose=args.verbose, quiet=args.quiet)
+    configure_run_logging("generate_benchmark", verbose=args.verbose, quiet=args.quiet, log_dir=args.log_dir)
 
     if args.count < 1:
         LOGGER.error("--count must be at least 1.")
@@ -256,7 +295,7 @@ def main() -> int:
     try:
         generate_dataset(args)
     except (FileExistsError, ValueError) as exc:
-        LOGGER.error("%s", exc)
+        LOGGER.error("{}", exc)
         return 1
     return 0
 

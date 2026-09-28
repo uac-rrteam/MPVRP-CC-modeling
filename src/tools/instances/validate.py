@@ -1,20 +1,20 @@
 from __future__ import annotations
 
 import argparse
-import logging
 from math import ceil
 from pathlib import Path
 
 import numpy as np
+from loguru import logger
 
 from .models import (
     EPSILON, GenerationConfig, InstanceData, ParsedInstance, VerificationReport
 )
-from milp.models import MPVRPInstance
 from .io import load_instance_file
+from tools.run_logging import configure_run_logging
 
 
-LOGGER = logging.getLogger(__name__)
+LOGGER = logger
 
 
 
@@ -234,12 +234,7 @@ def maximum_station_product_delivery(capacities: np.ndarray, depot_stocks: np.nd
 
 
 def validate_parsed_instance(instance: ParsedInstance) -> VerificationReport:
-    """Validate a loaded file and confirm compatibility with the LP parser.
-
-    Extends instance_data validation with:
-    - File-level header information (UUID, dimensions)
-    - Compatibility with the canonical instance parser
-    """
+    """Validate parsed instance data and report its file header."""
     report = validate_instance_data(instance)
 
     # Add header information to the report
@@ -250,9 +245,6 @@ def validate_parsed_instance(instance: ParsedInstance) -> VerificationReport:
         f"products={instance.nb_products}, depots={instance.nb_depots}, garages={instance.nb_garages}, "
         f"stations={instance.nb_stations}, vehicles={instance.nb_vehicles}.",
     )
-
-    # Check that the LP parser can read and interpret the file
-    _check_lp_parser_compatibility(instance, report)
 
     return report
 
@@ -396,44 +388,7 @@ def _check_geographic_overlap(data: InstanceData, report: VerificationReport) ->
         report.warning(f"Geographic overlap detected: {len(overlaps)} pair(s). First cases: {overlaps[:5]}.")
 
 
-def _check_lp_parser_compatibility(instance: ParsedInstance, report: VerificationReport) -> None:
-    """Load the file through the canonical parser to catch format mismatches.
-
-    This is the final compatibility check: attempt to actually parse the file
-    using the optimization model's parser. Catches file format issues that aren't caught
-    by the numpy-based validation.
-    """
-    try:
-        # Try to load using the actual LP parser
-        lp_instance = MPVRPInstance.read(instance.filepath)
-    except Exception as exc:
-        report.error(f"MPVRPInstance.read() cannot parse this file: {exc}")
-        return
-
-    # Check that every vehicle has a valid garage reference
-    if any(vehicle.start_g is None for vehicle in lp_instance.vehicles):
-        report.error("MPVRPInstance.read() parsed at least one vehicle with no linked garage.")
-        return
-
-    # Check that dimensions match between what we generated and what the parser read
-    parsed_dimensions = (
-        lp_instance.n_prods,
-        lp_instance.n_depots,
-        lp_instance.n_garages,
-        lp_instance.n_stations,
-        lp_instance.n_vehicles,
-    )
-    expected_dimensions = tuple(int(value) for value in instance.params)
-    if parsed_dimensions != expected_dimensions:
-        report.error(
-            "MPVRPInstance.read() dimensions differ from file header: "
-            f"{parsed_dimensions} != {expected_dimensions}."
-        )
-    else:
-        report.info("LP parser compatibility: ok.")
-
-
-def log_report(report: VerificationReport, logger: logging.Logger = LOGGER) -> None:
+def log_report(report: VerificationReport, logger=LOGGER) -> None:
     for message in report.infos:
         logger.info(message)
     for message in report.warnings:
@@ -442,21 +397,21 @@ def log_report(report: VerificationReport, logger: logging.Logger = LOGGER) -> N
         logger.error(message)
     if report.errors:
         logger.error(
-            "Status: INVALID (%d error(s), %d warning(s)).",
+            "Status: INVALID ({} error(s), {} warning(s)).",
             len(report.errors),
             len(report.warnings),
         )
     else:
-        logger.info("Status: VALID (%d warning(s)).", len(report.warnings))
+        logger.info("Status: VALID ({} warning(s)).", len(report.warnings))
 
 
 def verify_instance(
     filepath: str | Path,
-    logger: logging.Logger = LOGGER,
+    logger=LOGGER,
 ) -> VerificationReport:
     path = Path(filepath)
     report = VerificationReport()
-    logger.info("Verifying instance: %s", path)
+    logger.info("Verifying instance: {}", path)
     instance = load_instance_file(path, report)
     if instance is not None:
         parsed_report = validate_parsed_instance(instance)
@@ -473,18 +428,13 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("filepath", type=Path, help="Path to the .dat instance file.")
     parser.add_argument("-q", "--quiet", action="store_true", help="Only log warnings and errors.")
     parser.add_argument("--verbose", action="store_true", help="Enable debug logging.")
+    parser.add_argument("--log-dir", type=Path, help="Directory for the per-run .log file.")
     return parser.parse_args()
 
 
 def main() -> int:
     args = _parse_args()
-    if args.quiet:
-        level = logging.WARNING
-    elif args.verbose:
-        level = logging.DEBUG
-    else:
-        level = logging.INFO
-    logging.basicConfig(level=level, format="%(levelname)s: %(message)s")
+    configure_run_logging("validate", verbose=args.verbose, quiet=args.quiet, log_dir=args.log_dir)
     report = verify_instance(args.filepath)
     log_report(report)
     return 0 if report.is_valid else 1

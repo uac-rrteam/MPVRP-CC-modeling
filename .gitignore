@@ -9,6 +9,9 @@ wheels/
 # Virtual environments
 .venv
 
+# Per-run tool logs
+/results/logs/
+
 # IDE
 .vscode/
 .idea/

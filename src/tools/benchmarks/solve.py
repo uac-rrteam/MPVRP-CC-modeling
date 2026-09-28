@@ -2,14 +2,15 @@ from __future__ import annotations
 
 import argparse
 import csv
-import logging
 import time
+from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 from typing import Any
 
 from gurobipy import GRB
+from loguru import logger
 
-from tools.instances.generate import configure_logging
+from tools.run_logging import configure_run_logging
 from milp.io.solution import write_solution
 from milp.solver import solve_milp
 from milp.models import MPVRPInstance
@@ -20,23 +21,26 @@ from paths import (
 	ZERO_CHANGEOVER_SOLUTIONS_DIR,
 )
 
-LOGGER = logging.getLogger(__name__)
+LOGGER = logger
 DEFAULT_TIME_LIMIT = 190
-REPORT_FIELDNAMES = [
-	"id",
-	"file",
-	"instance_path",
-	"status",
-	"solver_status",
-	"objective",
-	"best_bound",
-	"mip_gap",
-	"mip_gap_percent",
-	"node_count",
-	"solver_runtime",
-	"solution_file",
-	"message",
-]
+@dataclass
+class BenchmarkResult:
+	id: str
+	file: str
+	instance_path: str
+	status: str = "UNSOLVED"
+	solver_status: str = ""
+	objective: str = ""
+	best_bound: str = ""
+	mip_gap: str = ""
+	mip_gap_percent: str = ""
+	node_count: str = ""
+	solver_runtime: str = ""
+	solution_file: str = ""
+	message: str = ""
+
+
+REPORT_FIELDNAMES = [field.name for field in fields(BenchmarkResult)]
 
 
 SCENARIO_DIRECTORIES = {
@@ -128,72 +132,49 @@ def solve_dataset(args: argparse.Namespace) -> Path:
 		instance_id = row.get("id", f"{index:03d}")
 		if instance_id in report_rows:
 			skipped += 1
-			LOGGER.info("[%s/%s] Skipping reported instance %s", index, len(rows), instance_id)
+			LOGGER.info("[{}/{}] Skipping reported instance {}", index, len(rows), instance_id)
 			continue
 		file_name = row.get("file", "")
 		instance_path = _resolve_instance_path(manifest_path, file_name)
 
-		LOGGER.info("[%s/%s] Solving %s", index, len(rows), instance_path.name)
+		LOGGER.info("[{}/{}] Solving {}", index, len(rows), instance_path.name)
 		start = time.perf_counter()
-		status = "UNSOLVED"
-		solver_status = ""
-		objective = ""
-		best_bound = ""
-		mip_gap = ""
-		mip_gap_percent = ""
-		node_count = ""
-		solver_runtime = ""
-		solution_file = ""
-		message = ""
+		result = BenchmarkResult(instance_id, file_name, str(instance_path))
 
 		try:
 			instance = MPVRPInstance.read(instance_path)
 			solution = solve_milp(instance, time_limit=args.time_limit, output=args.verbose)
 
 			if solution is None:
-				message = f"No incumbent solution within {args.time_limit} seconds or model infeasible."
+				result.message = f"No incumbent solution within {args.time_limit} seconds or model infeasible."
 				unsolved += 1
-				LOGGER.warning("UNSOLVED %s: %s", instance_path.name, message)
+				LOGGER.warning("UNSOLVED {}: {}", instance_path.name, result.message)
 			else:
-				status = "SOLVED"
-				solver_status = "OPTIMAL" if solution.status == GRB.OPTIMAL else "TIME_LIMIT"
-				objective = f"{solution.objective:.6f}"
-				best_bound = f"{solution.best_bound:.6f}"
-				mip_gap = f"{solution.mip_gap:.8f}"
-				mip_gap_percent = f"{100.0 * solution.mip_gap:.4f}"
-				node_count = f"{solution.node_count:.0f}"
-				solver_runtime = f"{solution.solver_runtime:.6f}"
 				elapsed = time.perf_counter() - start
 				solution_path = _solution_path(instance, args.solutions_dir)
 				write_solution(instance=instance, routes=solution.routes, filename=solution_path, resolution_time=elapsed)
-				solution_file = str(solution_path)
+				result.status = "OPTIMAL" if solution.status == GRB.OPTIMAL else "SOLVED"
+				result.solver_status = "OPTIMAL" if solution.status == GRB.OPTIMAL else "TIME_LIMIT"
+				result.objective = f"{solution.objective:.6f}"
+				result.best_bound = f"{solution.best_bound:.6f}"
+				result.mip_gap = f"{solution.mip_gap:.8f}"
+				result.mip_gap_percent = f"{100.0 * solution.mip_gap:.4f}"
+				result.node_count = f"{solution.node_count:.0f}"
+				result.solver_runtime = f"{solution.solver_runtime:.6f}"
+				result.solution_file = str(solution_path)
 				solved += 1
-				LOGGER.info("Solved %s (%s)", instance_path.name, solver_status)
+				LOGGER.info("{} {} objective={} gap={}", result.status, instance_path.name, result.objective, result.mip_gap)
 		except Exception as exc:
-			message = str(exc)
+			result.message = str(exc)
 			unsolved += 1
-			LOGGER.warning("UNSOLVED %s: %s", instance_path.name, exc)
+			LOGGER.exception("UNSOLVED {}: {}", instance_path.name, exc)
 
-		report_rows[instance_id] = {
-			"id": instance_id,
-			"file": file_name,
-			"instance_path": str(instance_path),
-			"status": status,
-			"solver_status": solver_status,
-			"objective": objective,
-			"best_bound": best_bound,
-			"mip_gap": mip_gap,
-			"mip_gap_percent": mip_gap_percent,
-			"node_count": node_count,
-			"solver_runtime": solver_runtime,
-			"solution_file": solution_file,
-			"message": message,
-		}
+		report_rows[instance_id] = asdict(result)
 		# Persist every result so an interruption loses at most the active solve.
 		_write_report(report_path, report_rows, rows)
 
 	LOGGER.info(
-		"Finished. solved=%s unsolved=%s skipped=%s report=%s",
+		"Finished. solved={} unsolved={} skipped={} report={}",
 		solved,
 		unsolved,
 		skipped,
@@ -221,6 +202,7 @@ def parse_args() -> argparse.Namespace:
 	parser.add_argument("--time-limit", type=int, default=DEFAULT_TIME_LIMIT, help="Per-instance Gurobi time limit in seconds.")
 	parser.add_argument("-q", "--quiet", action="store_true", help="Only log warnings and errors.")
 	parser.add_argument("--verbose", action="store_true", help="Enable debug logging and Gurobi output.")
+	parser.add_argument("--log-dir", type=Path, help="Directory for the per-run .log file.")
 	args = parser.parse_args()
 	instances_dir = SCENARIO_DIRECTORIES[args.scenario]
 	default_solutions_dir = SCENARIO_SOLUTION_DIRECTORIES[args.scenario]
@@ -232,7 +214,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
 	args = parse_args()
-	configure_logging(verbose=args.verbose, quiet=args.quiet)
+	configure_run_logging("solve_benchmark", verbose=args.verbose, quiet=args.quiet, log_dir=args.log_dir)
 
 	if args.time_limit < 1:
 		LOGGER.error("--time-limit must be at least 1.")
@@ -241,7 +223,7 @@ def main() -> int:
 	try:
 		solve_dataset(args)
 	except (FileNotFoundError, ValueError) as exc:
-		LOGGER.error("%s", exc)
+		LOGGER.error("{}", exc)
 		return 1
 	return 0
 

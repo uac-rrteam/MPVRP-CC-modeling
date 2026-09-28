@@ -128,6 +128,10 @@ mpvrp-solve-benchmark --scenario with_changeover_costs --resume
 
 Each scenario writes solutions and its `benchmark_report.csv` to the corresponding directory under `data/solutions/`.
 
+## Run logs
+
+Each tool command writes a timestamped `.log` file under `results/logs/`. The startup message shows its path unless `--quiet` hides informational console messages. Logs include progress, warnings, errors, and debug details even when `--quiet` limits console output. Use `--log-dir PATH` on any tool command to choose another location. Benchmark generation also records the accepted instance seed, attempt count, and rejected draws in its manifest; its log shows every generation attempt.
+
 ## Paired experimental design
 
 Files with the same name in the two instance directories form a pair. The zero-cost version preserves every other field and replaces only the product-transition matrix with zeros. This makes it possible to attribute route differences specifically to the presence or absence of transition and preparation costs.

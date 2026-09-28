@@ -3,16 +3,19 @@ from __future__ import annotations
 import argparse
 import re
 from pathlib import Path
+from loguru import logger
 
 from milp.models import MPVRPInstance
 from paths import (
     CHANGEOVER_INSTANCES_DIR,
     REPRICED_SOLUTIONS_DIR,
 )
+from tools.run_logging import configure_run_logging
 
 
 SOLUTION_FILENAME_RE = re.compile(r"^Sol_(?P<suffix>.+\.dat)$")
 PRODUCT_TOKEN_RE = re.compile(r"(?P<product>\d+)\((?P<cost>[-+]?\d+(?:\.\d+)?)\)")
+VISIT_RE = re.compile(r"(?P<id>\d+)(?: (?P<load>\[\d+(?:\.\d+)?\]|\(\d+(?:\.\d+)?\)))?")
 
 
 def infer_instance_path(solution_path: Path, instances_dir: Path) -> Path:
@@ -26,25 +29,27 @@ def infer_instance_path(solution_path: Path, instances_dir: Path) -> Path:
     return instance_path
 
 
+def _parse_schedule_line(line: str, label: str) -> tuple[int, list[str]]:
+    prefix, separator, sequence = line.partition(":")
+    if not separator or not prefix.strip().isdigit():
+        raise ValueError(f"Invalid {label} line: {line}")
+    tokens = sequence.strip().split(" - ")
+    if not tokens or any(not token for token in tokens):
+        raise ValueError(f"Empty token in {label} line: {line}")
+    return int(prefix.strip()), tokens
+
+
 def _reevaluate_product_line(
     line: str,
+    products: list[int],
     instance: MPVRPInstance,
     expected_initial_product: int,
     trip_start_positions: set[int],
 ) -> tuple[str, int, float]:
-    """Replace displayed cumulative costs while preserving the product sequence."""
-    prefix, separator, sequence = line.partition(":")
-    if not separator or not prefix.strip().isdigit():
-        raise ValueError(f"Invalid product line: {line}")
-
-    matches = list(PRODUCT_TOKEN_RE.finditer(sequence))
-    if not matches:
-        raise ValueError(f"Product line contains no product token: {line}")
-
-    products = [int(match.group("product")) for match in matches]
+    """Replace cumulative costs after the schedule has been validated."""
     if products[0] != expected_initial_product:
         raise ValueError(
-            f"Vehicle {prefix.strip()} starts with product {products[0]}, "
+            f"Product line starts with product {products[0]}, "
             f"but the paired instance specifies {expected_initial_product}."
         )
     if any(product < 0 or product >= instance.n_prods for product in products):
@@ -62,12 +67,11 @@ def _reevaluate_product_line(
         replacement_costs.append(cumulative_cost)
         previous_product = product
 
-    cost_iterator = iter(replacement_costs)
-
-    def replace(match: re.Match[str]) -> str:
-        return f"{match.group('product')}({next(cost_iterator):.2f})"
-
-    return PRODUCT_TOKEN_RE.sub(replace, line), number_of_changes, cumulative_cost
+    vehicle_id, _ = _parse_schedule_line(line, "product")
+    formatted = " - ".join(
+        f"{product}({cost:.2f})" for product, cost in zip(products, replacement_costs)
+    )
+    return f"{vehicle_id}: {formatted}", number_of_changes, cumulative_cost
 
 
 def reevaluate_solution_text(solution_text: str, instance: MPVRPInstance) -> tuple[str, int, float]:
@@ -81,42 +85,77 @@ def reevaluate_solution_text(solution_text: str, instance: MPVRPInstance) -> tup
     vehicles = {vehicle.id: vehicle for vehicle in instance.vehicles}
     total_changes = 0
     total_cost = 0.0
-    product_line_count = 0
-    previous_visit_line: str | None = None
-
-    for index in range(metrics_start):
-        line = lines[index]
-        prefix, separator, sequence = line.partition(":")
-        if not separator or not prefix.strip().isdigit():
+    seen_vehicles: set[int] = set()
+    index = 0
+    while index < metrics_start:
+        if not lines[index].strip():
+            index += 1
             continue
-        # Visit lines contain loads in square brackets. Product lines do not.
-        if "[" in sequence:
-            previous_visit_line = line
-            continue
-
-        vehicle_id = int(prefix.strip())
+        if index + 1 >= metrics_start:
+            raise ValueError("A vehicle visit line has no matching product line.")
+        vehicle_id, visit_tokens = _parse_schedule_line(lines[index], "visit")
+        product_id, product_tokens = _parse_schedule_line(lines[index + 1], "product")
+        if vehicle_id != product_id:
+            raise ValueError(f"Visit vehicle {vehicle_id} does not match product vehicle {product_id}.")
+        if vehicle_id in seen_vehicles:
+            raise ValueError(f"Duplicate vehicle {vehicle_id} in solution.")
         if vehicle_id not in vehicles:
             raise ValueError(f"Unknown vehicle {vehicle_id} in solution.")
-        if previous_visit_line is None:
-            raise ValueError(f"Missing visit line before product line for vehicle {vehicle_id}.")
-        visit_parts = previous_visit_line.partition(":")[2].split(" - ")
-        trip_start_positions = {
-            position for position, part in enumerate(visit_parts) if "[" in part
-        }
+        seen_vehicles.add(vehicle_id)
+        if len(visit_tokens) < 4 or len(product_tokens) != len(visit_tokens) - 1:
+            raise ValueError(f"Vehicle {vehicle_id} has mismatched visit and product token counts.")
+        visits = [VISIT_RE.fullmatch(token) for token in visit_tokens]
+        products = [PRODUCT_TOKEN_RE.fullmatch(token) for token in product_tokens]
+        if any(match is None for match in visits) or any(match is None for match in products):
+            raise ValueError(f"Vehicle {vehicle_id} has an invalid visit or product token.")
+        home_garage = vehicles[vehicle_id].start_g.id
+        if visits[0].group("load") is not None or visits[-1].group("load") is not None:
+            raise ValueError(f"Vehicle {vehicle_id} must start and end at a garage.")
+        if int(visits[0].group("id")) != home_garage or int(visits[-1].group("id")) != home_garage:
+            raise ValueError(f"Vehicle {vehicle_id} does not return to its home garage.")
+        trip_start_positions = set()
+        trip_has_delivery = False
+        depot_ids = {depot.id for depot in instance.depots}
+        station_ids = {station.id for station in instance.stations}
+        for position, visit in enumerate(visits[1:-1], start=1):
+            annotation = visit.group("load")
+            if annotation is None:
+                raise ValueError(f"Vehicle {vehicle_id} has an untyped intermediate visit.")
+            if annotation.startswith("["):
+                if int(visit.group("id")) not in depot_ids or float(annotation[1:-1]) <= 0:
+                    raise ValueError(f"Vehicle {vehicle_id} has an invalid depot load.")
+                if position > 1 and not trip_has_delivery:
+                    raise ValueError(f"Vehicle {vehicle_id} has a trip without a delivery.")
+                trip_start_positions.add(position)
+                trip_has_delivery = False
+            else:
+                if int(visit.group("id")) not in station_ids or float(annotation[1:-1]) <= 0:
+                    raise ValueError(f"Vehicle {vehicle_id} has an invalid station delivery.")
+                if not trip_start_positions:
+                    raise ValueError(f"Vehicle {vehicle_id} delivers before loading.")
+                trip_has_delivery = True
+        if not trip_has_delivery:
+            raise ValueError(f"Vehicle {vehicle_id} has a trip without a delivery.")
+        product_ids = [int(match.group("product")) for match in products]
+        for position in range(1, len(product_ids)):
+            if position not in trip_start_positions and product_ids[position] != product_ids[position - 1]:
+                raise ValueError(f"Vehicle {vehicle_id} changes product without loading.")
         updated_line, changes, cost = _reevaluate_product_line(
-            line,
+            lines[index + 1],
+            product_ids,
             instance,
             vehicles[vehicle_id].init_prod - 1,
             trip_start_positions,
         )
-        lines[index] = updated_line
+        lines[index + 1] = updated_line
         total_changes += changes
         total_cost += cost
-        product_line_count += 1
-        previous_visit_line = None
+        index += 2
 
-    if product_line_count == 0:
+    if not seen_vehicles:
         raise ValueError("No vehicle product line was found in the solution.")
+    if int(lines[metrics_start]) != len(seen_vehicles):
+        raise ValueError("The vehicle count metric does not match the schedules.")
 
     # Metrics 2 and 3 are respectively the number and total cost of changes.
     lines[metrics_start + 1] = str(total_changes)
@@ -148,6 +187,7 @@ def reevaluate_solution_file(
         raise ValueError("The output must differ from the source solution; the source is intentionally preserved.")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(updated_text, encoding="utf-8")
+    logger.info("Repriced {} using {}", solution_path, instance_path)
     return output_path, changes, cost
 
 
@@ -158,19 +198,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("solution", type=Path, help="Zero-changeover solution file to reprice.")
     parser.add_argument("--instance", type=Path, help="Original-cost instance; inferred from the filename by default.")
     parser.add_argument("--output", type=Path, help="Output copy; a dedicated subdirectory is used by default.")
+    parser.add_argument("--log-dir", type=Path, help="Directory for the per-run .log file.")
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
+    configure_run_logging("reevaluate_changeovers", log_dir=args.log_dir)
     try:
         output, changes, cost = reevaluate_solution_file(args.solution, args.instance, args.output)
     except (FileNotFoundError, ValueError) as exc:
-        print(f"ERROR: {exc}")
+        logger.error("{}", exc)
         return 1
-    print(f"Repriced copy: {output}")
-    print(f"Product changes: {changes}")
-    print(f"Total changeover cost: {cost:.2f}")
+    logger.info("Repriced copy: {}", output)
+    logger.info("Product changes: {}", changes)
+    logger.info("Total changeover cost: {:.2f}", cost)
     return 0
 
 

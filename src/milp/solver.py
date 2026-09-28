@@ -4,6 +4,7 @@ import time
 from math import ceil
 
 from gurobipy import GRB, Model, quicksum
+from loguru import logger
 
 from paths import CHANGEOVER_INSTANCES_DIR
 from milp.io.solution import write_solution
@@ -328,7 +329,7 @@ def solve_milp(
 
     model.optimize()
     if model.status not in (GRB.OPTIMAL, GRB.TIME_LIMIT) or model.solCount == 0:
-        print(f"No feasible solution found. Gurobi status: {model.status}")
+        logger.warning("No feasible solution found. Gurobi status: {}", model.status)
         return None
 
     def node_label(node_index: int) -> str:
@@ -387,7 +388,7 @@ def solve_milp(
                 }
             )
 
-    print(f"Solution found with objective value: {model.ObjVal}")
+    logger.info("Solution found with objective value: {}", model.ObjVal)
     return MilpSolution(
         objective=float(model.ObjVal),
         best_bound=float(model.ObjBound),
@@ -410,4 +411,4 @@ if __name__ == "__main__":
             routes=solution.routes,
             resolution_time=solution.solver_runtime,
         )
-    print(f"Elapsed time: {time.perf_counter() - start_time:.3f}s")
+    logger.info("Elapsed time: {:.3f}s", time.perf_counter() - start_time)

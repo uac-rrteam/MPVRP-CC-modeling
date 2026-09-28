@@ -3,8 +3,10 @@ from __future__ import annotations
 import argparse
 import shutil
 from pathlib import Path
+from loguru import logger
 
 from paths import CHANGEOVER_INSTANCES_DIR, ZERO_CHANGEOVER_INSTANCES_DIR
+from tools.run_logging import configure_run_logging
 
 
 def zero_changeover_costs(source: Path, destination: Path, force: bool = False) -> Path:
@@ -48,6 +50,7 @@ def create_paired_dataset(
     destination_dir.mkdir(parents=True, exist_ok=True)
     for source in source_files:
         zero_changeover_costs(source, destination_dir / source.name, force=force)
+        logger.debug("Paired {}", source.name)
 
     manifest = source_dir / "manifest.csv"
     if manifest.exists():
@@ -66,17 +69,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--source-dir", type=Path, default=CHANGEOVER_INSTANCES_DIR)
     parser.add_argument("--destination-dir", type=Path, default=ZERO_CHANGEOVER_INSTANCES_DIR)
     parser.add_argument("--force", action="store_true", help="Overwrite an existing paired dataset.")
+    parser.add_argument("--log-dir", type=Path, help="Directory for the per-run .log file.")
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
+    configure_run_logging("prepare_scenarios", log_dir=args.log_dir)
     try:
         count = create_paired_dataset(args.source_dir, args.destination_dir, args.force)
     except (FileExistsError, FileNotFoundError, ValueError) as exc:
-        print(f"ERROR: {exc}")
+        logger.error("{}", exc)
         return 1
-    print(f"Created {count} paired instances in {args.destination_dir}")
+    logger.info("Created {} paired instances in {}", count, args.destination_dir)
     return 0
 
 
