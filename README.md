@@ -1,139 +1,56 @@
 # MPVRP-CC
 
-Python tools for generating, validating, and solving the **Multi-Product Vehicle Routing Problem with Split Deliveries and Changeover Costs**.
+Tools to generate, validate, and solve multi-product vehicle routing instances with split deliveries and product changeover costs. The MILP solver uses Gurobi.
 
-The project studies how product-transition costs influence route planning for a heterogeneous fleet serving multiple products, depots, and customers. Off-diagonal costs represent product changes; positive low-cost diagonal entries represent preparation and loading when a vehicle retains the same product.
+## Setup
 
-## Project layout
-
-```text
-.
-├── src/
-│   ├── paths.py             # Central project paths
-│   ├── milp/                # Gurobi model, schemas, and file I/O
-│   └── tools/
-│       ├── instances/       # Generate, read, and validate instances
-│       ├── benchmarks/      # Generate and solve benchmark datasets
-│       └── changeovers/     # Build and re-evaluate paired scenarios
-├── data/
-│   ├── instances/
-│   │   ├── in/     # Generated benchmark instances
-│   │   ├── out/  # Paired zero-cost instances
-│   └── solutions/
-│       ├── in/
-│       └── out/
-├── docs/                    # Problem and file-format documentation
-└── pyproject.toml
-```
-
-## Installation
-
-Python 3.12 or later and a valid Gurobi installation/license are required.
+Requires Python 3.12+ and a working Gurobi license.
 
 ```bash
 uv sync
-```
-
-After installation, the project exposes dedicated commands. `uv run` also
-discovers the packages directly from `src/`, so no manual `PYTHONPATH` setup
-is needed.
-
-Run the test suite with:
-
-```bash
 uv run pytest
 ```
 
-## Common commands
+Run commands below with `uv run` if the environment is not activated, for example `uv run mpvrp-generate --help`.
 
-Generate one instance:
+## Workflow
+
+Generate and validate one instance:
 
 ```bash
 mpvrp-generate -v 5 -d 2 -g 2 -s 12 -p 3 --id S_001
+mpvrp-validate data/instances/generated/MPVRP_S_001_s12_d2_p3.dat
 ```
 
-Generate the main experimental benchmark:
+Generate a benchmark and its zero-cost pairs:
 
 ```bash
 mpvrp-generate-benchmark --count 100
-```
-
-The main benchmark always contains at least two products and samples `normal`,
-`high`, and `mixed` changeover regimes. Mixed matrices contain normal and high
-off-diagonal arcs, while every diagonal uses the `low` range. The
-single-instance generator still exposes the `low` level and
-accepts one product for separate control or sensitivity experiments. All
-numeric values stored in newly generated instance files are integers. The
-parser also exposes an integer distance matrix, rounded to the nearest unit for
-constraint programming; the MILP continues to use exact Euclidean distances.
-
-The inclusive integer ranges are `25–150` for `low`, `1001–3500` for
-`normal`, and `4501–15000` for `high`. In the main benchmark, `low` is used
-only on the diagonal; `normal`, `high`, or both are used off the diagonal.
-
-The current benchmark contains 100 paired instances. Its transition-cost
-regimes are balanced as follows: 34 `normal`, 33 `high`, and 33 `mixed`.
-The product-count distribution is 22 instances with 2 products, 30 with 3,
-12 with 4, 22 with 5, and 14 with 6.
-
-Validate an instance:
-
-```bash
-mpvrp-validate data/instances/in/MPVRP_003_s37_d2_p2.dat
-```
-
-Recreate the paired zero-changeover dataset:
-
-```bash
 mpvrp-prepare-scenarios --force
 ```
 
-Solve the benchmark with transition costs:
+Use `--force` with benchmark generation when replacing existing instance files.
+
+Solve either scenario, or resume a run from its report:
 
 ```bash
 mpvrp-solve-benchmark --scenario with_changeover_costs --time-limit 190
-```
-
-Solve the paired benchmark with zero costs:
-
-```bash
 mpvrp-solve-benchmark --scenario without_changeover_costs --time-limit 190
-```
-
-Re-evaluate a fixed zero-cost solution with the cost-bearing transition matrix:
-
-```bash
-mpvrp-reevaluate-changeovers \
-  data/solutions/milp/out/Sol_003_s37_d2_p2.dat \
-  --output data/solutions/milp/out/recomputed/Sol_003_s37_d2_p2.dat
-```
-
-This does not rerun the solver or alter the source solution. It writes a copy
-under `data/solutions/milp/out/recomputed/` and
-updates only the cumulative costs on product lines, the number of genuine
-product changes, and the total transition cost.
-
-Reevaluate every available MILP zero-cost solution with:
-
-```bash
-./scripts/reevaluate_all_changeovers.sh
-```
-
-If a MILP benchmark run was interrupted, resume it without discarding report
-rows that were already checkpointed:
-
-```bash
 mpvrp-solve-benchmark --scenario with_changeover_costs --resume
 ```
 
-Each scenario writes solutions and its `benchmark_report.csv` to the corresponding directory under `data/solutions/`.
+Reprice a fixed zero-cost solution using the original cost matrix:
 
-## Run logs
+```bash
+mpvrp-reevaluate-changeovers data/solutions/milp/out/Sol_003_s37_d2_p2.dat
+```
 
-Each tool command writes a timestamped `.log` file under `results/logs/`. The startup message shows its path unless `--quiet` hides informational console messages. Logs include progress, warnings, errors, and debug details even when `--quiet` limits console output. Use `--log-dir PATH` on any tool command to choose another location. Benchmark generation also records the accepted instance seed, attempt count, and rejected draws in its manifest; its log shows every generation attempt.
+This writes a copy under `data/solutions/milp/out/recomputed/` and leaves the source solution unchanged.
 
-## Paired experimental design
+## Outputs
 
-Files with the same name in the two instance directories form a pair. The zero-cost version preserves every other field and replaces only the product-transition matrix with zeros. This makes it possible to attribute route differences specifically to the presence or absence of transition and preparation costs.
+See [data/README.md](data/README.md) for directory meanings. Each benchmark solve writes a `benchmark_report.csv` with `OPTIMAL`, `SOLVED`, or `UNSOLVED` for every attempted instance. `--resume` skips every reported attempt, including `UNSOLVED`. The generation manifest records each accepted seed, attempt count, and rejected draws.
 
-See [docs/problem.md](docs/problem.md), [docs/instance_format.md](docs/instance_format.md), and [docs/solution_format.md](docs/solution_format.md) for the complete specifications.
+Every command writes a separate log under `results/logs/`. Use `--log-dir PATH` to change its location. `--quiet` reduces console output; the log still includes debug entries.
+
+For the problem and file formats, see [docs/problem.md](docs/problem.md), [docs/instance_format.md](docs/instance_format.md), and [docs/solution_format.md](docs/solution_format.md).
