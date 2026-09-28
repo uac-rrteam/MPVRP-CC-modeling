@@ -24,6 +24,21 @@ from common.paths import (
 
 LOGGER = logging.getLogger("tools.solve")
 DEFAULT_TIME_LIMIT = 190
+REPORT_FIELDNAMES = [
+	"id",
+	"file",
+	"instance_path",
+	"status",
+	"solver_status",
+	"objective",
+	"best_bound",
+	"mip_gap",
+	"mip_gap_percent",
+	"node_count",
+	"solver_runtime",
+	"solution_file",
+	"message",
+]
 
 
 SCENARIO_DIRECTORIES = {
@@ -82,6 +97,39 @@ def _load_manifest(manifest_path: Path) -> list[dict[str, str]]:
 		return list(csv.DictReader(file))
 
 
+def _load_report(report_path: Path) -> dict[str, dict[str, str]]:
+	"""Load completed report rows, indexed by instance ID."""
+	if not report_path.exists():
+		return {}
+	with report_path.open(newline="", encoding="utf-8") as file:
+		reader = csv.DictReader(file)
+		if reader.fieldnames != REPORT_FIELDNAMES:
+			raise ValueError(f"Unexpected report columns in {report_path}")
+		return {row["id"]: row for row in reader}
+
+
+def _write_report(
+	report_path: Path,
+	report_rows: dict[str, dict[str, str]],
+	manifest_rows: list[dict[str, str]],
+) -> None:
+	"""Atomically checkpoint report rows in manifest order."""
+	manifest_ids = [
+		row.get("id", f"{index:03d}")
+		for index, row in enumerate(manifest_rows, start=1)
+	]
+	ordered_rows = [report_rows[instance_id] for instance_id in manifest_ids if instance_id in report_rows]
+	known_ids = set(manifest_ids)
+	ordered_rows.extend(row for instance_id, row in report_rows.items() if instance_id not in known_ids)
+
+	temporary_path = report_path.with_name(f".{report_path.name}.tmp")
+	with temporary_path.open("w", newline="", encoding="utf-8") as file:
+		writer = csv.DictWriter(file, fieldnames=REPORT_FIELDNAMES)
+		writer.writeheader()
+		writer.writerows(ordered_rows)
+	temporary_path.replace(report_path)
+
+
 def solve_dataset(args: argparse.Namespace) -> Path:
 	"""Solve every manifest entry and record a CSV report."""
 	method = getattr(args, "method", 1)
@@ -97,12 +145,18 @@ def solve_dataset(args: argparse.Namespace) -> Path:
 	args.solutions_dir.mkdir(parents=True, exist_ok=True)
 
 	rows = _load_manifest(manifest_path)
-	report_rows: list[dict[str, str]] = []
+	report_rows = _load_report(report_path) if getattr(args, "resume", False) else {}
+	_write_report(report_path, report_rows, rows)
 	solved = 0
 	unsolved = 0
+	skipped = 0
 
 	for index, row in enumerate(rows, start=1):
 		instance_id = row.get("id", f"{index:03d}")
+		if instance_id in report_rows:
+			skipped += 1
+			LOGGER.info("[%s/%s] Skipping reported instance %s", index, len(rows), instance_id)
+			continue
 		file_name = row.get("file", "")
 		instance_path = _resolve_instance_path(manifest_path, file_name)
 
@@ -147,45 +201,31 @@ def solve_dataset(args: argparse.Namespace) -> Path:
 			unsolved += 1
 			LOGGER.warning("UNSOLVED %s: %s", instance_path.name, exc)
 
-		report_rows.append(
-			{
-				"id": instance_id,
-				"file": file_name,
-				"instance_path": str(instance_path),
-				"status": status,
-				"solver_status": solver_status,
-				"objective": objective,
-				"best_bound": best_bound,
-				"mip_gap": mip_gap,
-				"mip_gap_percent": mip_gap_percent,
-				"node_count": node_count,
-				"solver_runtime": solver_runtime,
-				"solution_file": solution_file,
-				"message": message,
-			}
-		)
+		report_rows[instance_id] = {
+			"id": instance_id,
+			"file": file_name,
+			"instance_path": str(instance_path),
+			"status": status,
+			"solver_status": solver_status,
+			"objective": objective,
+			"best_bound": best_bound,
+			"mip_gap": mip_gap,
+			"mip_gap_percent": mip_gap_percent,
+			"node_count": node_count,
+			"solver_runtime": solver_runtime,
+			"solution_file": solution_file,
+			"message": message,
+		}
+		# Persist every result so an interruption loses at most the active solve.
+		_write_report(report_path, report_rows, rows)
 
-	with report_path.open("w", newline="") as file:
-		fieldnames = [
-			"id",
-			"file",
-			"instance_path",
-			"status",
-			"solver_status",
-			"objective",
-			"best_bound",
-			"mip_gap",
-			"mip_gap_percent",
-			"node_count",
-			"solver_runtime",
-			"solution_file",
-			"message",
-		]
-		writer = csv.DictWriter(file, fieldnames=fieldnames)
-		writer.writeheader()
-		writer.writerows(report_rows)
-
-	LOGGER.info("Finished. solved=%s unsolved=%s report=%s", solved, unsolved, report_path)
+	LOGGER.info(
+		"Finished. solved=%s unsolved=%s skipped=%s report=%s",
+		solved,
+		unsolved,
+		skipped,
+		report_path,
+	)
 	return report_path
 
 
@@ -207,6 +247,11 @@ def parse_args() -> argparse.Namespace:
 	parser.add_argument("--manifest", type=Path, help="Override the scenario manifest.")
 	parser.add_argument("--solutions-dir", type=Path, help="Override the scenario solution directory.")
 	parser.add_argument("--report", type=Path, help="Override the scenario report path.")
+	parser.add_argument(
+		"--resume",
+		action="store_true",
+		help="Keep existing report rows and solve only manifest IDs not yet reported.",
+	)
 	parser.add_argument("--time-limit", type=int, default=DEFAULT_TIME_LIMIT, help="Per-instance Gurobi time limit in seconds.")
 	parser.add_argument("-q", "--quiet", action="store_true", help="Only log warnings and errors.")
 	parser.add_argument("--verbose", action="store_true", help="Enable debug logging and Gurobi output.")
@@ -229,7 +274,7 @@ def main() -> int:
 
 	try:
 		solve_dataset(args)
-	except FileNotFoundError as exc:
+	except (FileNotFoundError, ValueError) as exc:
 		LOGGER.error("%s", exc)
 		return 1
 	return 0

@@ -2,8 +2,8 @@
 
 ## Instances
 
-- `instances/with_changeover_costs/` contains 100 cost-bearing benchmark instances.
-- `instances/without_changeover_costs/` contains their 100 paired counterparts with zero-valued transition matrices.
+- `instances/in/` contains 100 cost-bearing benchmark instances.
+- `instances/out/` contains their 100 paired counterparts with zero-valued transition matrices.
 
 Regenerate the zero-cost dataset with:
 
@@ -17,6 +17,6 @@ Depending on the LP model used, the solutions may be in `solutions/lp*` with the
 
 This separation prevents one experiment from overwriting the results of the other.
 
-`without_changeover_costs/reevaluated_with_changeover_costs/` contains
+`in/recomputed/` contains
 optional copies of zero-cost solutions repriced afterward with the original
 transition matrix. Routes and delivered quantities remain unchanged.

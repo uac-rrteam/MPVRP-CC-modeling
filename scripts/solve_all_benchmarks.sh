@@ -51,6 +51,7 @@ run_stage() {
     uv run mpvrp-solve-benchmark \
         --method "$method" \
         --scenario "$scenario" \
+        --resume \
         --time-limit "$TIME_LIMIT"
 
     printf '%bCompleted: %s%b\n' "$GREEN" "$label" "$RESET"

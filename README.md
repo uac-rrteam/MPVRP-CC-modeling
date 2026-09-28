@@ -20,13 +20,12 @@ The project studies how product-transition costs influence route planning for a 
 │   └── tools/               # Generation and experiment commands
 ├── data/
 │   ├── instances/
-│   │   ├── with_changeover_costs/     # Generated benchmark instances
-│   │   ├── without_changeover_costs/  # Paired zero-cost instances
+│   │   ├── in/     # Generated benchmark instances
+│   │   ├── out/  # Paired zero-cost instances
 │   └── solutions/
-│       ├── with_changeover_costs/
-│       └── without_changeover_costs/
+│       ├── in/
+│       └── out/
 ├── docs/                    # Problem and file-format documentation
-├── results/article_figures/ # Generated analysis figures
 └── pyproject.toml
 ```
 
@@ -83,7 +82,7 @@ The product-count distribution is 22 instances with 2 products, 30 with 3,
 Validate an instance:
 
 ```bash
-mpvrp-validate data/instances/with_changeover_costs/MPVRP_003_s37_d2_p2.dat
+mpvrp-validate data/instances/in/MPVRP_003_s37_d2_p2.dat
 ```
 
 Recreate the paired zero-changeover dataset:
@@ -108,15 +107,40 @@ Re-evaluate a fixed zero-cost solution with the cost-bearing transition matrix:
 
 ```bash
 mpvrp-reevaluate-changeovers \
-  data/solutions/without_changeover_costs/Sol_003_s37_d2_p2.dat
+  data/solutions/lp2/without_changeover_costs/Sol_003_s37_d2_p2.dat \
+  --output data/solutions/lp2/without_changeover_costs/reevaluated_with_changeover_costs/Sol_003_s37_d2_p2.dat
 ```
 
 This does not rerun the solver or alter the source solution. It writes a copy
-under `data/solutions/without_changeover_costs/reevaluated_with_changeover_costs/`
-and updates only the cumulative costs on product lines, the number of genuine
+under the selected method's
+`without_changeover_costs/reevaluated_with_changeover_costs/` directory and
+updates only the cumulative costs on product lines, the number of genuine
 product changes, and the total transition cost.
 
+Reevaluate every available LP2 zero-cost solution with:
+
+```bash
+./scripts/reevaluate_all_changeovers.sh
+```
+
+If an LP2 benchmark run was interrupted, resume it without discarding report
+rows that were already checkpointed:
+
+```bash
+mpvrp-solve-benchmark --method 2 --scenario with_changeover_costs --resume
+```
+
 Each scenario writes solutions and its `benchmark_report.csv` to the corresponding directory under `data/solutions/`.
+
+Create the LP2 paper figures (PNG and vector PDF) plus the paired analysis CSV:
+
+```bash
+mpvrp-plot-lp2-results
+```
+
+The outputs are written to `results/article_figures/lp2/`. Objective plots use
+only instances solved in both compared scenarios, so every plotted observation
+is a matched instance.
 
 ## Paired experimental design
 

@@ -8,6 +8,7 @@ dependencies = [
     "gurobipy>=13.0.1",
     "matplotlib>=3.10.9",
     "numpy>=2.4.4",
+    "seaborn>=0.13.2",
 ]
 
 [dependency-groups]
@@ -22,6 +23,7 @@ mpvrp-prepare-scenarios = "tools.scenarios:main"
 mpvrp-reevaluate-changeovers = "tools.reevaluate:main"
 mpvrp-generate-benchmark = "tools.benchmark:main"
 mpvrp-solve-benchmark = "tools.solve:main"
+mpvrp-plot-lp2-results = "tools.plot_lp2_results:main"
 
 [build-system]
 requires = ["setuptools>=68"]
