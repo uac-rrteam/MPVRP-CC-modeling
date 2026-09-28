@@ -17,17 +17,20 @@ dev = [
 ]
 
 [project.scripts]
-mpvrp-generate = "tools.gen:main"
-mpvrp-validate = "tools.validation:main"
-mpvrp-prepare-scenarios = "tools.scenarios:main"
-mpvrp-reevaluate-changeovers = "tools.reevaluate:main"
-mpvrp-generate-benchmark = "tools.benchmark:main"
-mpvrp-solve-benchmark = "tools.solve:main"
-mpvrp-plot-lp2-results = "tools.plot_lp2_results:main"
+mpvrp-generate = "tools.instances.generate:main"
+mpvrp-validate = "tools.instances.validate:main"
+mpvrp-prepare-scenarios = "tools.changeovers.pair:main"
+mpvrp-reevaluate-changeovers = "tools.changeovers.reevaluate:main"
+mpvrp-generate-benchmark = "tools.benchmarks.generate:main"
+mpvrp-solve-benchmark = "tools.benchmarks.solve:main"
 
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools]
+py-modules = ["paths"]
+
 [tool.setuptools.packages.find]
-where = ["code"]
+where = ["src"]
+exclude = ["_prototype*"]

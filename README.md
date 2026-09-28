@@ -8,16 +8,13 @@ The project studies how product-transition costs influence route planning for a 
 
 ```text
 .
-├── code/
-│   ├── common/
-│   │   └── paths.py         # Central project paths
-│   ├── lp1/                 # First LP formulation
-│   │   ├── io/
-│   │   │   ├── inst.py      # Instance parser
-│   │   │   └── sol.py       # Solution formatter and writer
-│   │   ├── model.py         # Gurobi model
-│   │   └── schemas.py       # LP1 data structures
-│   └── tools/               # Generation and experiment commands
+├── src/
+│   ├── paths.py             # Central project paths
+│   ├── milp/                # Gurobi model, schemas, and file I/O
+│   └── tools/
+│       ├── instances/       # Generate, read, and validate instances
+│       ├── benchmarks/      # Generate and solve benchmark datasets
+│       └── changeovers/     # Build and re-evaluate paired scenarios
 ├── data/
 │   ├── instances/
 │   │   ├── in/     # Generated benchmark instances
@@ -38,7 +35,7 @@ uv sync
 ```
 
 After installation, the project exposes dedicated commands. `uv run` also
-discovers the packages directly from `code/`, so no manual `PYTHONPATH` setup
+discovers the packages directly from `src/`, so no manual `PYTHONPATH` setup
 is needed.
 
 Run the test suite with:
@@ -107,40 +104,29 @@ Re-evaluate a fixed zero-cost solution with the cost-bearing transition matrix:
 
 ```bash
 mpvrp-reevaluate-changeovers \
-  data/solutions/lp2/without_changeover_costs/Sol_003_s37_d2_p2.dat \
-  --output data/solutions/lp2/without_changeover_costs/reevaluated_with_changeover_costs/Sol_003_s37_d2_p2.dat
+  data/solutions/milp/out/Sol_003_s37_d2_p2.dat \
+  --output data/solutions/milp/out/recomputed/Sol_003_s37_d2_p2.dat
 ```
 
 This does not rerun the solver or alter the source solution. It writes a copy
-under the selected method's
-`without_changeover_costs/reevaluated_with_changeover_costs/` directory and
+under `data/solutions/milp/out/recomputed/` and
 updates only the cumulative costs on product lines, the number of genuine
 product changes, and the total transition cost.
 
-Reevaluate every available LP2 zero-cost solution with:
+Reevaluate every available MILP zero-cost solution with:
 
 ```bash
 ./scripts/reevaluate_all_changeovers.sh
 ```
 
-If an LP2 benchmark run was interrupted, resume it without discarding report
+If a MILP benchmark run was interrupted, resume it without discarding report
 rows that were already checkpointed:
 
 ```bash
-mpvrp-solve-benchmark --method 2 --scenario with_changeover_costs --resume
+mpvrp-solve-benchmark --scenario with_changeover_costs --resume
 ```
 
 Each scenario writes solutions and its `benchmark_report.csv` to the corresponding directory under `data/solutions/`.
-
-Create the LP2 paper figures (PNG and vector PDF) plus the paired analysis CSV:
-
-```bash
-mpvrp-plot-lp2-results
-```
-
-The outputs are written to `results/article_figures/lp2/`. Objective plots use
-only instances solved in both compared scenarios, so every plotted observation
-is a matched instance.
 
 ## Paired experimental design
 
