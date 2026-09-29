@@ -34,8 +34,9 @@ The paired instances share demands, depots, vehicles, and travel data; the secon
 
 | Path | Purpose |
 | --- | --- |
-| `src/milp/` | MILP model, solver, and instance/solution I/O |
-| `src/tools/` | Instance generation, validation, scenario pairing, benchmark solving, repricing, and plotting |
+| `src/mpvrp/` | Shared instance model and instance/solution I/O |
+| `src/milp/` | MILP result type, formulation, and benchmark solve command |
+| `src/tools/` | Instance generation, validation, scenario pairing, repricing, and plotting |
 | `data/instances/` | Generated and paired benchmark instances |
 | `data/solutions/milp/` | Solver solutions and benchmark reports |
 | `docs/` | Problem description and file format documentation |
@@ -66,8 +67,8 @@ Generate the 100-instance benchmark and paired zero-cost scenarios, then solve b
 ```bash
 uv run mpvrp-generate-benchmark --count 100
 uv run mpvrp-prepare-scenarios --force
-uv run mpvrp-solve-benchmark --scenario with_changeover_costs --time-limit 190
-uv run mpvrp-solve-benchmark --scenario without_changeover_costs --time-limit 190
+uv run mpvrp-solve-benchmark --scenario 1 --time-limit 190
+uv run mpvrp-solve-benchmark --scenario 2 --time-limit 190
 ```
 
 Use `--force` with benchmark generation to replace existing instance files. To resume a reported solve run, add `--resume`; reported attempts, including unsolved ones, are skipped. To reprice a zero-cost solution with the original changeover costs, run:
@@ -88,6 +89,12 @@ uv run mpvrp-plot --scenario 1 --all --solution --method cp
 ```
 
 Scenario `1` uses changeover costs; scenario `2` uses the paired zero-cost instance and solution. `--method` chooses the MILP or CP solution directory and defaults to `milp`. `--all` (or `--inst all`) plots every instance in the scenario, skipping missing solution files and reporting how many were skipped. Plots use a light illustrated landscape by default; `--background plain` selects a plain plot. Axes remain visible in both styles. Plots are saved under `results/plots/scenario_1/` or `results/plots/scenario_2/`. Use `--output PATH` for one PNG, or `--output DIRECTORY` with `--all`.
+
+## Build another solving approach
+
+Use `MPVRPInstance.read(path)` from `mpvrp.models` to load the same instances used by the MILP. The shared data types and file readers are in `src/mpvrp/`; solver-specific models and algorithms belong in their own package, like `src/milp/`. The existing MILP entry point in `src/milp/solve.py` shows how to iterate over a benchmark manifest and write a report.
+
+To produce a solution in the repository format, pass your vehicle trips to `write_solution` from `mpvrp.io.solution` with an explicit destination path. Each trip records `vehicle`, `trip`, `product`, `start_depot`, and `deliveries` (station ID and quantity); an optional `path` records station visit order. See [the solution format](docs/solution_format.md) for the resulting file layout. Keep outputs for a new method under its own `data/solutions/<method>/in/` and `out/` directories.
 
 ## Useful links
 

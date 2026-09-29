@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 from typing import Iterator
 
-from milp.models import (
+from mpvrp.models import (
     Depot,
     DepotProductNode,
     GarageNode,

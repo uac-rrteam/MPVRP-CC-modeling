@@ -1,1 +1,1 @@
-"""Benchmark generation and solving commands."""
+"""Solver-independent benchmark generation commands."""

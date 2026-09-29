@@ -10,9 +10,9 @@ from uuid import uuid4
 import numpy as np
 import pytest
 
-from milp.models import MPVRPInstance
+from mpvrp.models import MPVRPInstance
+from milp import solve as benchmark_solve
 from tools.benchmarks import generate as benchmark_generate
-from tools.benchmarks import solve as benchmark_solve
 from tools.changeovers.reevaluate import reevaluate_solution_text
 from tools.instances import generate as instance_generate
 from tools.instances.io import write_instance

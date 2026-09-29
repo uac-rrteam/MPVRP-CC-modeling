@@ -6,9 +6,10 @@ from math import ceil
 from gurobipy import GRB, Model, quicksum
 from loguru import logger
 
-from paths import CHANGEOVER_INSTANCES_DIR
-from milp.io.solution import write_solution
-from milp.models import MPVRPInstance, MPVRPNode, MilpSolution
+from paths import CHANGEOVER_INSTANCES_DIR, CHANGEOVER_SOLUTIONS_DIR
+from mpvrp.io.solution import write_solution
+from mpvrp.models import MPVRPInstance, MPVRPNode
+from milp.models import MilpSolution
 
 TIME_LIMIT = 190
 EPSILON = 1e-6
@@ -407,6 +408,7 @@ if __name__ == "__main__":
         write_solution(
             instance=parsed_instance,
             routes=solution.routes,
+            filename=CHANGEOVER_SOLUTIONS_DIR / filename.name.replace("MPVRP_", "Sol_", 1),
             resolution_time=solution.solver_runtime,
         )
     logger.info("Elapsed time: {:.3f}s", time.perf_counter() - start_time)

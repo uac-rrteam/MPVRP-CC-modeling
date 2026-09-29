@@ -14,8 +14,8 @@ import numpy as np
 from matplotlib.axes import Axes
 from matplotlib.colors import LinearSegmentedColormap
 
-from milp.io.instance import read_instance
-from milp.models import MPVRPInstance
+from mpvrp.io.instance import read_instance
+from mpvrp.models import MPVRPInstance
 from paths import (
     CHANGEOVER_INSTANCES_DIR,
     RESULTS_DIR,

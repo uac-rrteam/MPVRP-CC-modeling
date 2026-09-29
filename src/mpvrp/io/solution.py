@@ -4,8 +4,7 @@ import platform
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from paths import MILP_SOLUTIONS_DIR
-from milp.models import MPVRPInstance
+from mpvrp.models import MPVRPInstance
 
 EPSILON = 1e-6
 
@@ -118,17 +117,11 @@ def format_solution(
 def write_solution(
     instance: MPVRPInstance,
     routes: Sequence[Mapping[str, Any]],
-    filename: str | Path | None = None,
+    filename: str | Path,
     resolution_time: float = 0.0,
     processor: str | None = None,
 ) -> Path:
-    """Write a MILP solution using the repository's canonical format."""
-    if filename is None:
-        filename = MILP_SOLUTIONS_DIR / (
-            f"Sol_{instance.instance_id}"
-            f"_s{instance.n_stations}_d{instance.n_depots}_p{instance.n_prods}.dat"
-        )
-
+    """Write a solution in the repository's canonical format."""
     filepath = Path(filename)
     filepath.parent.mkdir(parents=True, exist_ok=True)
     filepath.write_text(

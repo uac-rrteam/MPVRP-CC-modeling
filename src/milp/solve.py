@@ -11,9 +11,9 @@ from gurobipy import GRB
 from loguru import logger
 
 from tools.run_logging import configure_run_logging
-from milp.io.solution import write_solution
+from mpvrp.io.solution import write_solution
 from milp.solver import solve_milp
-from milp.models import MPVRPInstance
+from mpvrp.models import MPVRPInstance
 from paths import (
 	CHANGEOVER_INSTANCES_DIR,
 	CHANGEOVER_SOLUTIONS_DIR,

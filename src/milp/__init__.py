@@ -1,5 +1,5 @@
-"""Second MPVRP-CC formulation."""
+"""MILP formulation and benchmark solver."""
 
-from milp.models import MPVRPInstance
+from milp.models import MilpSolution
 
-__all__ = ["MPVRPInstance"]
+__all__ = ["MilpSolution"]

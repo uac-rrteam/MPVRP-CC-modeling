@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 from loguru import logger
 
-from milp.models import MPVRPInstance
+from mpvrp.models import MPVRPInstance
 from paths import (
     CHANGEOVER_INSTANCES_DIR,
     REPRICED_SOLUTIONS_DIR,
