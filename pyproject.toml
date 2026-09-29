@@ -25,6 +25,7 @@ mpvrp-prepare-scenarios = "tools.changeovers.pair:main"
 mpvrp-reevaluate-changeovers = "tools.changeovers.reevaluate:main"
 mpvrp-generate-benchmark = "tools.benchmarks.generate:main"
 mpvrp-solve-benchmark = "tools.benchmarks.solve:main"
+mpvrp-plot = "tools.plot:main"
 
 [build-system]
 requires = ["setuptools>=68"]

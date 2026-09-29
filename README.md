@@ -2,7 +2,7 @@
 
 ## Project owner
 
-**Rosas Behoundja** · [Website](https://rosasbehoundja.github.io/) · [perrierosas@gmail.com](mailto:perrierosas@gmail.com)
+[**Rosas Behoundja**](https://rosasbehoundja.github.io/)
 
 ## Project overview
 
@@ -35,11 +35,12 @@ The paired instances share demands, depots, vehicles, and travel data; the secon
 | Path | Purpose |
 | --- | --- |
 | `src/milp/` | MILP model, solver, and instance/solution I/O |
-| `src/tools/` | Instance generation, validation, scenario pairing, benchmark solving, and repricing |
+| `src/tools/` | Instance generation, validation, scenario pairing, benchmark solving, repricing, and plotting |
 | `data/instances/` | Generated and paired benchmark instances |
 | `data/solutions/milp/` | Solver solutions and benchmark reports |
 | `docs/` | Problem description and file format documentation |
 | `results/logs/` | Command logs |
+| `results/plots/` | Generated instance and solution plots |
 | `tests/` | Automated checks |
 
 See [data/README.md](data/README.md) for the detailed data layout.
@@ -77,6 +78,17 @@ uv run mpvrp-reevaluate-changeovers data/solutions/milp/out/Sol_003_s37_d2_p2.da
 
 The repriced copy is written to `data/solutions/milp/out/recomputed/`. Commands write logs under `results/logs/`.
 
+Plot an instance's locations, or overlay the routes from its saved solution:
+
+```bash
+uv run mpvrp-plot --scenario 1 --inst 01
+uv run mpvrp-plot --scenario 1 --inst 02 --solution --method milp
+uv run mpvrp-plot --scenario 1 --inst 02 --solution --method cp
+uv run mpvrp-plot --scenario 1 --all --solution --method cp
+```
+
+Scenario `1` uses changeover costs; scenario `2` uses the paired zero-cost instance and solution. `--method` chooses the MILP or CP solution directory and defaults to `milp`. `--all` (or `--inst all`) plots every instance in the scenario, skipping missing solution files and reporting how many were skipped. Plots use a light illustrated landscape by default; `--background plain` selects a plain plot. Axes remain visible in both styles. Plots are saved under `results/plots/scenario_1/` or `results/plots/scenario_2/`. Use `--output PATH` for one PNG, or `--output DIRECTORY` with `--all`.
+
 ## Useful links
 
 - [Problem definition](docs/problem.md)
@@ -87,8 +99,8 @@ The repriced copy is written to `data/solutions/milp/out/recomputed/`. Commands 
 
 ## Contributors
 
-- Vinasétan Ratheil Houndji — [vratheilhoundji@gmail.com](mailto:vratheilhoundji@gmail.com)
-- Jean-Eudes Codo — [eudescodo00@gmail.com](mailto:eudescodo00@gmail.com)
-- Godright Adohounblessi — [adohounblessirobert@gmail.com](mailto:adohounblessirobert@gmail.com)
-- Fédel Folly — [follyfedel@gmail.com](mailto:follyfedel@gmail.com)
-- Marc-André Akouete — [christnam29@gmail.com](mailto:christnam29@gmail.com)
+- [Vinasétan Ratheil Houndji](mailto:vratheilhoundji@gmail.com)
+- [Jean-Eudes Codo](mailto:eudescodo00@gmail.com)
+- [Godright Adohounblessi](mailto:adohounblessirobert@gmail.com)
+- [Fédel Folly](mailto:follyfedel@gmail.com)
+- [Marc-André Akouete](mailto:christnam29@gmail.com)

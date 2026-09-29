@@ -8,6 +8,8 @@
 | `solutions/milp/in/` | Solutions and `benchmark_report.csv` for the cost-bearing scenario. |
 | `solutions/milp/out/` | Solutions and `benchmark_report.csv` for the zero-cost scenario. |
 | `solutions/milp/out/recomputed/` | Copies of zero-cost solutions repriced with the original changeover matrix. |
+| `solutions/cp/in/` | CP solutions for the cost-bearing scenario. |
+| `solutions/cp/out/` | CP solutions for the zero-cost scenario. |
 
 Files with the same instance name in `instances/in/` and `instances/out/` form a pair. The `out/` instance changes only the transition-cost matrix. Regenerate the pairs with `mpvrp-prepare-scenarios --force`.
 
