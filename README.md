@@ -1,56 +1,94 @@
-# MPVRP-CC
+# A MILP approach to solve the Multi-product Vehicle Routing Problem with Changeover Costs (MPVRP-CC)
 
-Tools to generate, validate, and solve multi-product vehicle routing instances with split deliveries and product changeover costs. The MILP solver uses Gurobi.
+## Project owner
 
-## Setup
+**Rosas Behoundja** · [Website](https://rosasbehoundja.github.io/) · [perrierosas@gmail.com](mailto:perrierosas@gmail.com)
 
-Requires Python 3.12+ and a working Gurobi license.
+## Project overview
+
+The Multi-Product Vehicle Routing Problem with Changeover Costs concerns deliveries of several products from depots with stock to stations with specified demands, using capacitated vehicles. A vehicle may make several trips during the planning period. On each trip, it loads one product at a depot, visits stations requiring that product, and delivers its entire load before loading again. The next trip may start at another depot. Each used vehicle leaves its home garage and returns there after its final delivery.
+
+Successive loads may require preparation. The changeover cost depends on the previous and next products, while the vehicle's initial product state determines the preparation before its first load. The model chooses delivery quantities, loading depots, vehicle assignments, and operation order to satisfy all demand while minimizing travel and changeover costs. The shortest route is therefore not always the least expensive plan.
+
+## Methods, design and evaluation
+
+```mermaid
+flowchart LR
+    A[Generate and validate instances] --> B[Create paired scenarios]
+    B --> C[With changeover costs]
+    B --> D[Without changeover costs]
+    C --> E[Solve MILP with Gurobi]
+    D --> E
+    E --> F[Check solutions and compare costs]
+```
+
+The paired instances share demands, depots, vehicles, and travel data; the second scenario sets changeover costs to zero. Benchmark reports record solution status and objective values. Zero-cost solutions can also be repriced using the original changeover matrix.
+
+## Tools
+
+- Python 3.12.3 (the project requires Python 3.12 or newer)
+- Gurobi 13.0.1 solver and a working Gurobi license
+- 100 benchmark instances with varied configurations
+
+## Files
+
+| Path | Purpose |
+| --- | --- |
+| `src/milp/` | MILP model, solver, and instance/solution I/O |
+| `src/tools/` | Instance generation, validation, scenario pairing, benchmark solving, and repricing |
+| `data/instances/` | Generated and paired benchmark instances |
+| `data/solutions/milp/` | Solver solutions and benchmark reports |
+| `docs/` | Problem description and file format documentation |
+| `results/logs/` | Command logs |
+| `tests/` | Automated checks |
+
+See [data/README.md](data/README.md) for the detailed data layout.
+
+## Setup instructions
+
+Install Python 3.12 or newer, [uv](https://docs.astral.sh/uv/), and configure a Gurobi license. From the project directory, install dependencies and run the checks:
 
 ```bash
 uv sync
 uv run pytest
 ```
 
-Run commands below with `uv run` if the environment is not activated, for example `uv run mpvrp-generate --help`.
-
-## Workflow
-
-Generate and validate one instance:
+Generate and validate an example instance:
 
 ```bash
-mpvrp-generate -v 5 -d 2 -g 2 -s 12 -p 3 --id S_001
-mpvrp-validate data/instances/generated/MPVRP_S_001_s12_d2_p3.dat
+uv run mpvrp-generate -v 5 -d 2 -g 2 -s 12 -p 3 --id S_001
+uv run mpvrp-validate data/instances/generated/MPVRP_S_001_s12_d2_p3.dat
 ```
 
-Generate a benchmark and its zero-cost pairs:
+Generate the 100-instance benchmark and paired zero-cost scenarios, then solve both:
 
 ```bash
-mpvrp-generate-benchmark --count 100
-mpvrp-prepare-scenarios --force
+uv run mpvrp-generate-benchmark --count 100
+uv run mpvrp-prepare-scenarios --force
+uv run mpvrp-solve-benchmark --scenario with_changeover_costs --time-limit 190
+uv run mpvrp-solve-benchmark --scenario without_changeover_costs --time-limit 190
 ```
 
-Use `--force` with benchmark generation when replacing existing instance files.
-
-Solve either scenario, or resume a run from its report:
+Use `--force` with benchmark generation to replace existing instance files. To resume a reported solve run, add `--resume`; reported attempts, including unsolved ones, are skipped. To reprice a zero-cost solution with the original changeover costs, run:
 
 ```bash
-mpvrp-solve-benchmark --scenario with_changeover_costs --time-limit 190
-mpvrp-solve-benchmark --scenario without_changeover_costs --time-limit 190
-mpvrp-solve-benchmark --scenario with_changeover_costs --resume
+uv run mpvrp-reevaluate-changeovers data/solutions/milp/out/Sol_003_s37_d2_p2.dat
 ```
 
-Reprice a fixed zero-cost solution using the original cost matrix:
+The repriced copy is written to `data/solutions/milp/out/recomputed/`. Commands write logs under `results/logs/`.
 
-```bash
-mpvrp-reevaluate-changeovers data/solutions/milp/out/Sol_003_s37_d2_p2.dat
-```
+## Useful links
 
-This writes a copy under `data/solutions/milp/out/recomputed/` and leaves the source solution unchanged.
+- [Problem definition](docs/problem.md)
+- [Instance format](docs/instance_format.md)
+- [Solution format](docs/solution_format.md)
+- [Data layout](data/README.md)
+- [Gurobi Python documentation](https://docs.gurobi.com/projects/optimizer/en/current/reference/python.html)
 
-## Outputs
+## Contributors
 
-See [data/README.md](data/README.md) for directory meanings. Each benchmark solve writes a `benchmark_report.csv` with `OPTIMAL`, `SOLVED`, or `UNSOLVED` for every attempted instance. `--resume` skips every reported attempt, including `UNSOLVED`. The generation manifest records each accepted seed, attempt count, and rejected draws.
-
-Every command writes a separate log under `results/logs/`. Use `--log-dir PATH` to change its location. `--quiet` reduces console output; the log still includes debug entries.
-
-For the problem and file formats, see [docs/problem.md](docs/problem.md), [docs/instance_format.md](docs/instance_format.md), and [docs/solution_format.md](docs/solution_format.md).
+- Vinasétan Ratheil Houndji — [vratheilhoundji@gmail.com](mailto:vratheilhoundji@gmail.com)
+- Jean-Eudes Codo — [eudescodo00@gmail.com](mailto:eudescodo00@gmail.com)
+- Godright Adohounblessi — [adohounblessirobert@gmail.com](mailto:adohounblessirobert@gmail.com)
+- Fédel Folly — [follyfedel@gmail.com](mailto:follyfedel@gmail.com)
+- Marc-André Akouete — [christnam29@gmail.com](mailto:christnam29@gmail.com)
