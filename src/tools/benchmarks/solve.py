@@ -44,13 +44,13 @@ REPORT_FIELDNAMES = [field.name for field in fields(BenchmarkResult)]
 
 
 SCENARIO_DIRECTORIES = {
-	"with_changeover_costs": CHANGEOVER_INSTANCES_DIR,
-	"without_changeover_costs": ZERO_CHANGEOVER_INSTANCES_DIR,
+	"1": CHANGEOVER_INSTANCES_DIR,
+	"2": ZERO_CHANGEOVER_INSTANCES_DIR,
 }
 
 SCENARIO_SOLUTION_DIRECTORIES = {
-	"with_changeover_costs": CHANGEOVER_SOLUTIONS_DIR,
-	"without_changeover_costs": ZERO_CHANGEOVER_SOLUTIONS_DIR,
+	"1": CHANGEOVER_SOLUTIONS_DIR,
+	"2": ZERO_CHANGEOVER_SOLUTIONS_DIR,
 }
 
 
@@ -184,11 +184,11 @@ def solve_dataset(args: argparse.Namespace) -> Path:
 
 
 def parse_args() -> argparse.Namespace:
-	parser = argparse.ArgumentParser(description="Solve the 100-instance benchmark set with a fixed time limit.")
+	parser = argparse.ArgumentParser(description="Solve the 100-instance benchmark set with a fixed time limit. 1=with changeover costs, 2=without changeover costs.")
 	parser.add_argument(
 		"--scenario",
 		choices=tuple(SCENARIO_DIRECTORIES),
-		default="with_changeover_costs",
+		default="1",
 		help="Experimental scenario to solve.",
 	)
 	parser.add_argument("--manifest", type=Path, help="Override the scenario manifest.")
