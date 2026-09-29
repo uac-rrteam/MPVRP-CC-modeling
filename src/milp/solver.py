@@ -401,7 +401,7 @@ def solve_milp(
 
 
 if __name__ == "__main__":
-    filename = CHANGEOVER_INSTANCES_DIR / "MPVRP_003_s37_d2_p2.dat"
+    filename = CHANGEOVER_INSTANCES_DIR / "MPVRP_002_s3_d6_p3.dat"
     parsed_instance = MPVRPInstance.read(filename)
     start_time = time.perf_counter()
     solution = solve_milp(parsed_instance, time_limit=300)
