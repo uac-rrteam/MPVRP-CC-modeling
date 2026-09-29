@@ -224,8 +224,6 @@ def solve_milp(
             model.addConstr(vehicle_visits <= 1, name=f"one_visit_per_vehicle_request[{k},{r}]")
 
             for t in trips:
-                # model.addConstr(quantity[k, t, r] >= visit[k, t, r],
-                #                 name=f"positive_delivery[{k},{t},{r}]")
                 model.addConstr(quantity[k, t, r] <= demand * visit[k, t, r],
                                 name=f"quantity_visit[{k},{t},{r}]")
 
