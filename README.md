@@ -1,12 +1,8 @@
 # A MILP approach to solve the Multi-product Vehicle Routing Problem with Changeover Costs (MPVRP-CC)
 
-## Project owner
-
-[**Rosas Behoundja**](https://rosasbehoundja.github.io/)
-
-## Project overview
-
 The Multi-Product Vehicle Routing Problem with Changeover Costs concerns deliveries of several products from depots with stock to stations with specified demands, using capacitated vehicles. A vehicle may make several trips during the planning period. On each trip, it loads one product at a depot, visits stations requiring that product, and delivers its entire load before loading again. The next trip may start at another depot. Each used vehicle leaves its home garage and returns there after its final delivery.
+
+![instance example](docs/instance_example.png)
 
 Successive loads may require preparation. The changeover cost depends on the previous and next products, while the vehicle's initial product state determines the preparation before its first load. The model chooses delivery quantities, loading depots, vehicle assignments, and operation order to satisfy all demand while minimizing travel and changeover costs. The shortest route is therefore not always the least expensive plan.
 
@@ -34,7 +30,7 @@ The paired instances share demands, depots, vehicles, and travel data; the secon
 
 | Path | Purpose |
 | --- | --- |
-| `src/mpvrp/` | Shared instance model and instance/solution I/O |
+| `src/mpvrp/` | Shared instance model, instance/solution I/O, and solution checker |
 | `src/milp/` | MILP result type, formulation, and benchmark solve command |
 | `src/tools/` | Instance generation, validation, scenario pairing, repricing, and plotting |
 | `data/instances/` | Generated and paired benchmark instances |
@@ -90,6 +86,15 @@ uv run mpvrp-plot --scenario 1 --all --solution --method cp
 
 Scenario `1` uses changeover costs; scenario `2` uses the paired zero-cost instance and solution. `--method` chooses the MILP or CP solution directory and defaults to `milp`. `--all` (or `--inst all`) plots every instance in the scenario, skipping missing solution files and reporting how many were skipped. Plots use a light illustrated landscape by default; `--background plain` selects a plain plot. Axes remain visible in both styles. Plots are saved under `results/plots/scenario_1/` or `results/plots/scenario_2/`. Use `--output PATH` for one PNG, or `--output DIRECTORY` with `--all`.
 
+Check a saved solution against its instance:
+
+```bash
+uv run mpvrp-check-solution --scenario 1 --inst 02 --method cp
+uv run mpvrp-check-solution --scenario 1 --inst 02 --method milp --json results/check_002.json
+```
+
+The checker reports PASS, FAIL, or SKIPPED for file format, vehicle schedules, trip continuity, product states, capacity, stock, demand, repeat service, and recalculated costs and distance. It exits with status `0` for a valid solution and `1` for an invalid solution. Use `--instance-path` and `--solution-path` to check files outside the benchmark directories.
+
 ## Build another solving approach
 
 Use `MPVRPInstance.read(path)` from `mpvrp.models` to load the same instances used by the MILP. The shared data types and file readers are in `src/mpvrp/`; solver-specific models and algorithms belong in their own package, like `src/milp/`. The existing MILP entry point in `src/milp/solve.py` shows how to iterate over a benchmark manifest and write a report.
@@ -104,10 +109,11 @@ To produce a solution in the repository format, pass your vehicle trips to `writ
 - [Data layout](data/README.md)
 - [Gurobi Python documentation](https://docs.gurobi.com/projects/optimizer/en/current/reference/python.html)
 
-## Contributors
+## Team
 
+-  [**Rosas Behoundja**](https://rosasbehoundja.github.io/)
 - [Vinasétan Ratheil Houndji](mailto:vratheilhoundji@gmail.com)
-- [Jean-Eudes Codo](mailto:eudescodo00@gmail.com)
 - [Godright Adohounblessi](mailto:adohounblessirobert@gmail.com)
+- [Jean-Eudes Codo](mailto:eudescodo00@gmail.com)
 - [Fédel Folly](mailto:follyfedel@gmail.com)
 - [Marc-André Akouete](mailto:christnam29@gmail.com)
