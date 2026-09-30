@@ -28,6 +28,15 @@ SCENARIOS = {
     "2": (ZERO_CHANGEOVER_INSTANCES_DIR, "out"),
 }
 VISIT_RE = re.compile(r"^(?P<id>\d+)(?:\s*(?P<load>\[[^]]+\]|\([^)]*\)))?$")
+# Put strongly different hues first so small fleets (especially two vehicles)
+# remain easy to distinguish. Later colors extend the palette for larger fleets.
+ROUTE_COLORS = (
+    "#1b4f9c", "#e05a28", "#00876c", "#9b3d96", "#a67c00",
+    "#d33670", "#557a1f", "#784421", "#008eaf", "#6446a6",
+    "#bc4b00", "#2a735f", "#ae2869", "#766500", "#4368c6",
+    "#b04b48", "#4f806c", "#9255ad", "#687e00", "#ba6840",
+    "#006d8f", "#995b12", "#336f9c", "#8a3650",
+)
 
 
 def find_instance(instances_dir: Path, instance_number: str) -> Path:
@@ -108,9 +117,8 @@ def plot_instance(
         elif background != "plain":
             raise ValueError(f"Unknown background: {background}")
         if routes:
-            colors = plt.get_cmap("tab20")
             for index, (vehicle_id, coordinates) in enumerate(sorted(routes.items())):
-                color = colors(index % 20)
+                color = ROUTE_COLORS[index % len(ROUTE_COLORS)]
                 xs, ys = zip(*coordinates)
                 ax.plot(xs, ys, color=color, alpha=0.75, linewidth=1.7, label=f"Vehicle {vehicle_id}", zorder=1)
                 for start, end in zip(coordinates, coordinates[1:]):
