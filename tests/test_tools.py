@@ -121,11 +121,15 @@ def test_benchmark_records_finished_attempt_status(
         )
     monkeypatch.setattr(benchmark_solve, "solve_milp", solve)
     monkeypatch.setattr(benchmark_solve, "write_solution", lambda **_: None)
+    monkeypatch.setattr(benchmark_solve, "_validated_route_objective", lambda *_: 2.0)
     benchmark_solve.solve_dataset(args)
     with args.report.open(newline="") as file:
         rows = list(csv.DictReader(file))
     assert len(rows) == 1
     assert rows[0]["status"] == expected_status
+    if solver_result is not None:
+        assert rows[0]["objective"] == "2.000000"
+        assert rows[0]["solver_objective"] == "1.000000"
 
 
 def test_generation_retry_manifest_records_rejected_draw(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

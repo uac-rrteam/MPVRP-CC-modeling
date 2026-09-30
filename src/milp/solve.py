@@ -11,6 +11,7 @@ from gurobipy import GRB
 from loguru import logger
 
 from tools.run_logging import configure_run_logging
+from mpvrp.checker import check_solution_text
 from mpvrp.io.solution import write_solution
 from milp.solver import solve_milp
 from mpvrp.models import MPVRPInstance
@@ -31,6 +32,7 @@ class BenchmarkResult:
 	status: str = "UNSOLVED"
 	solver_status: str = ""
 	objective: str = ""
+	solver_objective: str = ""
 	best_bound: str = ""
 	mip_gap: str = ""
 	mip_gap_percent: str = ""
@@ -61,6 +63,19 @@ def _solution_path(instance: Any, solutions_dir: Path) -> Path:
 	)
 
 
+def _validated_route_objective(instance: MPVRPInstance, solution_path: Path) -> float:
+	"""Return the objective represented by the saved, checked route."""
+	report = check_solution_text(instance, solution_path.read_text(encoding="utf-8"))
+	if not report.is_valid:
+		failures = [
+			detail
+			for check in report.checks.values() if check.status == "FAIL"
+			for detail in check.details
+		]
+		raise ValueError(f"Saved solution failed verification: {'; '.join(failures)}")
+	return float(report.calculated["distance"] + report.calculated["changeover_cost"])
+
+
 def _resolve_instance_path(manifest_path: Path, entry: str) -> Path:
 	path = Path(entry)
 	if path.is_absolute():
@@ -84,9 +99,14 @@ def _load_report(report_path: Path) -> dict[str, dict[str, str]]:
 		return {}
 	with report_path.open(newline="", encoding="utf-8") as file:
 		reader = csv.DictReader(file)
-		if reader.fieldnames != REPORT_FIELDNAMES:
+		legacy_fields = [name for name in REPORT_FIELDNAMES if name != "solver_objective"]
+		if reader.fieldnames not in (REPORT_FIELDNAMES, legacy_fields):
 			raise ValueError(f"Unexpected report columns in {report_path}")
-		return {row["id"]: row for row in reader}
+		rows = list(reader)
+		if reader.fieldnames == legacy_fields:
+			for row in rows:
+				row["solver_objective"] = row["objective"]
+		return {row["id"]: row for row in rows}
 
 
 def _write_report(
@@ -153,9 +173,11 @@ def solve_dataset(args: argparse.Namespace) -> Path:
 				elapsed = time.perf_counter() - start
 				solution_path = _solution_path(instance, args.solutions_dir)
 				write_solution(instance=instance, routes=solution.routes, filename=solution_path, resolution_time=elapsed)
+				route_objective = _validated_route_objective(instance, solution_path)
 				result.status = "OPTIMAL" if solution.status == GRB.OPTIMAL else "SOLVED"
 				result.solver_status = "OPTIMAL" if solution.status == GRB.OPTIMAL else "TIME_LIMIT"
-				result.objective = f"{solution.objective:.6f}"
+				result.objective = f"{route_objective:.6f}"
+				result.solver_objective = f"{solution.objective:.6f}"
 				result.best_bound = f"{solution.best_bound:.6f}"
 				result.mip_gap = f"{solution.mip_gap:.8f}"
 				result.mip_gap_percent = f"{100.0 * solution.mip_gap:.4f}"

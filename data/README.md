@@ -13,4 +13,6 @@
 
 Files with the same instance name in `instances/in/` and `instances/out/` form a pair. The `out/` instance changes only the transition-cost matrix. Regenerate the pairs with `mpvrp-prepare-scenarios --force`.
 
-Benchmark reports record `OPTIMAL` (proven optimum), `SOLVED` (feasible solution), or `UNSOLVED` (no solution recorded). The generation manifest includes the accepted seed and any rejected attempts.
+Benchmark reports record `OPTIMAL` (Gurobi proved the model optimum), `SOLVED` (feasible solution), or `UNSOLVED` (no solution recorded in that run). The generation manifest includes the accepted seed and any rejected attempts.
+
+For MILP reports, `objective` is recalculated from the saved route as travel distance plus changeover cost. `solver_objective`, `best_bound`, and MIP gap describe the Gurobi model run; the gap is relative to `solver_objective`. A saved route may have a different objective when its serialized path differs from the model's internal path.

@@ -91,9 +91,11 @@ Check a saved solution against its instance:
 ```bash
 uv run mpvrp-check-solution --scenario 1 --inst 02 --method cp
 uv run mpvrp-check-solution --scenario 1 --inst 02 --method milp --json results/check_002.json
+uv run mpvrp-check-solution --scenario 1 --all --method cp --json results/cp_checks.json
+uv run mpvrp-check-solution --scenario 1 --all --method milp --report-dir results/milp_checks
 ```
 
-The checker reports PASS, FAIL, or SKIPPED for file format, vehicle schedules, trip continuity, product states, capacity, stock, demand, repeat service, and recalculated costs and distance. It exits with status `0` for a valid solution and `1` for an invalid solution. Use `--instance-path` and `--solution-path` to check files outside the benchmark directories.
+The checker reports PASS, FAIL, or SKIPPED for file format, vehicle schedules, trip continuity, product states, capacity, stock, demand, repeat service, and recalculated costs and distance. `--all` (or `--inst all`) checks every instance in the selected scenario and includes missing solutions in its summary. With `--all`, `--json PATH` saves one aggregate report and `--report-dir DIRECTORY` saves one JSON report per instance; both options can be combined. It exits with status `0` only when every checked solution is valid, or `1` if any is invalid or missing. Use `--instance-path` and `--solution-path` to check files outside the benchmark directories.
 
 ## Build another solving approach
 
