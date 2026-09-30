@@ -6,8 +6,11 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "gurobipy>=13.0.1",
+    "loguru>=0.7.3",
     "matplotlib>=3.10.9",
     "numpy>=2.4.4",
+    "ruff>=0.16.9",
+    "seaborn>=0.13.2",
 ]
 
 [dependency-groups]
@@ -16,16 +19,22 @@ dev = [
 ]
 
 [project.scripts]
-mpvrp-generate = "tools.gen:main"
-mpvrp-validate = "tools.validation:main"
-mpvrp-prepare-scenarios = "tools.scenarios:main"
-mpvrp-reevaluate-changeovers = "tools.reevaluate:main"
-mpvrp-generate-benchmark = "tools.benchmark:main"
-mpvrp-solve-benchmark = "tools.solve:main"
+mpvrp-generate = "tools.instances.generate:main"
+mpvrp-validate = "tools.instances.validate:main"
+mpvrp-prepare-scenarios = "tools.changeovers.pair:main"
+mpvrp-reevaluate-changeovers = "tools.changeovers.reevaluate:main"
+mpvrp-generate-benchmark = "tools.benchmarks.generate:main"
+mpvrp-solve-benchmark = "milp.solve:main"
+mpvrp-plot = "tools.plot:main"
+mpvrp-check-solution = "tools.check_solution:main"
 
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools]
+py-modules = ["paths"]
+
 [tool.setuptools.packages.find]
-where = ["code"]
+where = ["src"]
+exclude = ["_prototype*"]

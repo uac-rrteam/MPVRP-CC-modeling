@@ -1,22 +1,16 @@
-# Experimental data
+# Data layout
 
-## Instances
+| Directory | Contents |
+| --- | --- |
+| `instances/generated/` | Instances made with `mpvrp-generate`. Created on first use. |
+| `instances/in/` | Benchmark instances with changeover costs and `manifest.csv`. |
+| `instances/out/` | Matching benchmark instances with zero changeover costs and a copied manifest. |
+| `solutions/milp/in/` | Solutions and `benchmark_report.csv` for the cost-bearing scenario. |
+| `solutions/milp/out/` | Solutions and `benchmark_report.csv` for the zero-cost scenario. |
+| `solutions/milp/out/recomputed/` | Copies of zero-cost solutions repriced with the original changeover matrix. |
+| `solutions/cp/in/` | CP solutions for the cost-bearing scenario. |
+| `solutions/cp/out/` | CP solutions for the zero-cost scenario. |
 
-- `instances/with_changeover_costs/` contains 100 cost-bearing benchmark instances.
-- `instances/without_changeover_costs/` contains their 100 paired counterparts with zero-valued transition matrices.
+Files with the same instance name in `instances/in/` and `instances/out/` form a pair. The `out/` instance changes only the transition-cost matrix. Regenerate the pairs with `mpvrp-prepare-scenarios --force`.
 
-Regenerate the zero-cost dataset with:
-
-```bash
-mpvrp-prepare-scenarios --force
-```
-
-## Solutions
-
-Depending on the LP model used, the solutions may be in `solutions/lp*` with the same subfolder structure as the instances. The `with_changeover_costs/` and `without_changeover_costs/` folders are kept separate.
-
-This separation prevents one experiment from overwriting the results of the other.
-
-`without_changeover_costs/reevaluated_with_changeover_costs/` contains
-optional copies of zero-cost solutions repriced afterward with the original
-transition matrix. Routes and delivered quantities remain unchanged.
+Benchmark reports record `OPTIMAL` (proven optimum), `SOLVED` (feasible solution), or `UNSOLVED` (no solution recorded). The generation manifest includes the accepted seed and any rejected attempts.

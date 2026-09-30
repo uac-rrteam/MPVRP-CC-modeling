@@ -9,6 +9,10 @@ wheels/
 # Virtual environments
 .venv
 
+# Per-run tool logs
+/results/logs/
+/results/plots/
+
 # IDE
 .vscode/
 .idea/
@@ -19,3 +23,10 @@ agents/
 
 paper/
 maxicp/
+
+# Superseded first modeling attempt (kept locally for reference)
+/src/_prototype\[archived\]/
+/data/solutions/_prototype\[archived\]/
+
+## json files
+*.json

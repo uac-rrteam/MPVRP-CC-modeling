@@ -1,125 +1,119 @@
-# MPVRP-CC
+# A MILP approach to solve the Multi-product Vehicle Routing Problem with Changeover Costs (MPVRP-CC)
 
-Python tools for generating, validating, and solving the **Multi-Product Vehicle Routing Problem with Split Deliveries and Changeover Costs**.
+The Multi-Product Vehicle Routing Problem with Changeover Costs concerns deliveries of several products from depots with stock to stations with specified demands, using capacitated vehicles. A vehicle may make several trips during the planning period. On each trip, it loads one product at a depot, visits stations requiring that product, and delivers its entire load before loading again. The next trip may start at another depot. Each used vehicle leaves its home garage and returns there after its final delivery.
 
-The project studies how product-transition costs influence route planning for a heterogeneous fleet serving multiple products, depots, and customers. Off-diagonal costs represent product changes; positive low-cost diagonal entries represent preparation and loading when a vehicle retains the same product.
+![instance example](docs/instance_example.png)
 
-## Project layout
+Successive loads may require preparation. The changeover cost depends on the previous and next products, while the vehicle's initial product state determines the preparation before its first load. The model chooses delivery quantities, loading depots, vehicle assignments, and operation order to satisfy all demand while minimizing travel and changeover costs. The shortest route is therefore not always the least expensive plan.
 
-```text
-.
-├── code/
-│   ├── common/
-│   │   └── paths.py         # Central project paths
-│   ├── lp1/                 # First LP formulation
-│   │   ├── io/
-│   │   │   ├── inst.py      # Instance parser
-│   │   │   └── sol.py       # Solution formatter and writer
-│   │   ├── model.py         # Gurobi model
-│   │   └── schemas.py       # LP1 data structures
-│   └── tools/               # Generation and experiment commands
-├── data/
-│   ├── instances/
-│   │   ├── with_changeover_costs/     # Generated benchmark instances
-│   │   ├── without_changeover_costs/  # Paired zero-cost instances
-│   └── solutions/
-│       ├── with_changeover_costs/
-│       └── without_changeover_costs/
-├── docs/                    # Problem and file-format documentation
-├── results/article_figures/ # Generated analysis figures
-└── pyproject.toml
+## Methods, design and evaluation
+
+```mermaid
+flowchart LR
+    A[Generate and validate instances] --> B[Create paired scenarios]
+    B --> C[With changeover costs]
+    B --> D[Without changeover costs]
+    C --> E[Solve MILP with Gurobi]
+    D --> E
+    E --> F[Check solutions and compare costs]
 ```
 
-## Installation
+The paired instances share demands, depots, vehicles, and travel data; the second scenario sets changeover costs to zero. Benchmark reports record solution status and objective values. Zero-cost solutions can also be repriced using the original changeover matrix.
 
-Python 3.12 or later and a valid Gurobi installation/license are required.
+## Tools
+
+- Python 3.12.3 (the project requires Python 3.12 or newer)
+- Gurobi 13.0.1 solver and a working Gurobi license
+- 100 benchmark instances with varied configurations
+
+## Files
+
+| Path | Purpose |
+| --- | --- |
+| `src/mpvrp/` | Shared instance model, instance/solution I/O, and solution checker |
+| `src/milp/` | MILP result type, formulation, and benchmark solve command |
+| `src/tools/` | Instance generation, validation, scenario pairing, repricing, and plotting |
+| `data/instances/` | Generated and paired benchmark instances |
+| `data/solutions/milp/` | Solver solutions and benchmark reports |
+| `docs/` | Problem description and file format documentation |
+| `results/logs/` | Command logs |
+| `results/plots/` | Generated instance and solution plots |
+| `tests/` | Automated checks |
+
+See [data/README.md](data/README.md) for the detailed data layout.
+
+## Setup instructions
+
+Install Python 3.12 or newer, [uv](https://docs.astral.sh/uv/), and configure a Gurobi license. From the project directory, install dependencies and run the checks:
 
 ```bash
 uv sync
-```
-
-After installation, the project exposes dedicated commands. `uv run` also
-discovers the packages directly from `code/`, so no manual `PYTHONPATH` setup
-is needed.
-
-Run the test suite with:
-
-```bash
 uv run pytest
 ```
 
-## Common commands
-
-Generate one instance:
+Generate and validate an example instance:
 
 ```bash
-mpvrp-generate -v 5 -d 2 -g 2 -s 12 -p 3 --id S_001
+uv run mpvrp-generate -v 5 -d 2 -g 2 -s 12 -p 3 --id S_001
+uv run mpvrp-validate data/instances/generated/MPVRP_S_001_s12_d2_p3.dat
 ```
 
-Generate the main experimental benchmark:
+Generate the 100-instance benchmark and paired zero-cost scenarios, then solve both:
 
 ```bash
-mpvrp-generate-benchmark --count 100
+uv run mpvrp-generate-benchmark --count 100
+uv run mpvrp-prepare-scenarios --force
+uv run mpvrp-solve-benchmark --scenario 1 --time-limit 190
+uv run mpvrp-solve-benchmark --scenario 2 --time-limit 190
 ```
 
-The main benchmark always contains at least two products and samples `normal`,
-`high`, and `mixed` changeover regimes. Mixed matrices contain normal and high
-off-diagonal arcs, while every diagonal uses the `low` range. The
-single-instance generator still exposes the `low` level and
-accepts one product for separate control or sensitivity experiments. All
-numeric values stored in newly generated instance files are integers. The
-parser also exposes an integer distance matrix, rounded to the nearest unit for
-constraint programming; the MILP continues to use exact Euclidean distances.
-
-The inclusive integer ranges are `25–150` for `low`, `1001–3500` for
-`normal`, and `4501–15000` for `high`. In the main benchmark, `low` is used
-only on the diagonal; `normal`, `high`, or both are used off the diagonal.
-
-The current benchmark contains 100 paired instances. Its transition-cost
-regimes are balanced as follows: 34 `normal`, 33 `high`, and 33 `mixed`.
-The product-count distribution is 22 instances with 2 products, 30 with 3,
-12 with 4, 22 with 5, and 14 with 6.
-
-Validate an instance:
+Use `--force` with benchmark generation to replace existing instance files. To resume a reported solve run, add `--resume`; reported attempts, including unsolved ones, are skipped. To reprice a zero-cost solution with the original changeover costs, run:
 
 ```bash
-mpvrp-validate data/instances/with_changeover_costs/MPVRP_003_s37_d2_p2.dat
+uv run mpvrp-reevaluate-changeovers data/solutions/milp/out/Sol_003_s37_d2_p2.dat
 ```
 
-Recreate the paired zero-changeover dataset:
+The repriced copy is written to `data/solutions/milp/out/recomputed/`. Commands write logs under `results/logs/`.
+
+Plot an instance's locations, or overlay the routes from its saved solution:
 
 ```bash
-mpvrp-prepare-scenarios --force
+uv run mpvrp-plot --scenario 1 --inst 01
+uv run mpvrp-plot --scenario 1 --inst 02 --solution --method milp
+uv run mpvrp-plot --scenario 1 --inst 02 --solution --method cp
+uv run mpvrp-plot --scenario 1 --all --solution --method cp
 ```
 
-Solve the benchmark with transition costs:
+Scenario `1` uses changeover costs; scenario `2` uses the paired zero-cost instance and solution. `--method` chooses the MILP or CP solution directory and defaults to `milp`. `--all` (or `--inst all`) plots every instance in the scenario, skipping missing solution files and reporting how many were skipped. Plots use a light illustrated landscape by default; `--background plain` selects a plain plot. Axes remain visible in both styles. Plots are saved under `results/plots/scenario_1/` or `results/plots/scenario_2/`. Use `--output PATH` for one PNG, or `--output DIRECTORY` with `--all`.
+
+Check a saved solution against its instance:
 
 ```bash
-mpvrp-solve-benchmark --scenario with_changeover_costs --time-limit 190
+uv run mpvrp-check-solution --scenario 1 --inst 02 --method cp
+uv run mpvrp-check-solution --scenario 1 --inst 02 --method milp --json results/check_002.json
 ```
 
-Solve the paired benchmark with zero costs:
+The checker reports PASS, FAIL, or SKIPPED for file format, vehicle schedules, trip continuity, product states, capacity, stock, demand, repeat service, and recalculated costs and distance. It exits with status `0` for a valid solution and `1` for an invalid solution. Use `--instance-path` and `--solution-path` to check files outside the benchmark directories.
 
-```bash
-mpvrp-solve-benchmark --scenario without_changeover_costs --time-limit 190
-```
+## Build another solving approach
 
-Re-evaluate a fixed zero-cost solution with the cost-bearing transition matrix:
+Use `MPVRPInstance.read(path)` from `mpvrp.models` to load the same instances used by the MILP. The shared data types and file readers are in `src/mpvrp/`; solver-specific models and algorithms belong in their own package, like `src/milp/`. The existing MILP entry point in `src/milp/solve.py` shows how to iterate over a benchmark manifest and write a report.
 
-```bash
-mpvrp-reevaluate-changeovers \
-  data/solutions/without_changeover_costs/Sol_003_s37_d2_p2.dat
-```
+To produce a solution in the repository format, pass your vehicle trips to `write_solution` from `mpvrp.io.solution` with an explicit destination path. Each trip records `vehicle`, `trip`, `product`, `start_depot`, and `deliveries` (station ID and quantity); an optional `path` records station visit order. See [the solution format](docs/solution_format.md) for the resulting file layout. Keep outputs for a new method under its own `data/solutions/<method>/in/` and `out/` directories.
 
-This does not rerun the solver or alter the source solution. It writes a copy
-under `data/solutions/without_changeover_costs/reevaluated_with_changeover_costs/`
-and updates only the cumulative costs on product lines, the number of genuine
-product changes, and the total transition cost.
+## Useful links
 
-Each scenario writes solutions and its `benchmark_report.csv` to the corresponding directory under `data/solutions/`.
+- [Problem definition](docs/problem.md)
+- [Instance format](docs/instance_format.md)
+- [Solution format](docs/solution_format.md)
+- [Data layout](data/README.md)
+- [Gurobi Python documentation](https://docs.gurobi.com/projects/optimizer/en/current/reference/python.html)
 
-## Paired experimental design
+## Team
 
-Files with the same name in the two instance directories form a pair. The zero-cost version preserves every other field and replaces only the product-transition matrix with zeros. This makes it possible to attribute route differences specifically to the presence or absence of transition and preparation costs.
-
-See [docs/problem.md](docs/problem.md), [docs/instance_format.md](docs/instance_format.md), and [docs/solution_format.md](docs/solution_format.md) for the complete specifications.
+-  [**Rosas Behoundja**](https://rosasbehoundja.github.io/)
+- [Vinasétan Ratheil Houndji](mailto:vratheilhoundji@gmail.com)
+- [Godright Adohounblessi](mailto:adohounblessirobert@gmail.com)
+- [Jean-Eudes Codo](mailto:eudescodo00@gmail.com)
+- [Fédel Folly](mailto:follyfedel@gmail.com)
+- [Marc-André Akouete](mailto:christnam29@gmail.com)
